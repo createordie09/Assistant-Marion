@@ -1,0 +1,6 @@
+{
+  "name": "Super Assistant Vocal",
+  "description": "Assistant vocal intelligent avec animation 3D réactive, capable de recherches web, d'ouvrir des onglets, et de lire des vidéos youtube.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}

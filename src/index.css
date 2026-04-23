@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .radial-gradient-dark {
+    background: radial-gradient(circle at center, #171717 0%, #0a0a0a 100%);
+  }
+}
