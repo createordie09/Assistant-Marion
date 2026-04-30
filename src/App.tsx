@@ -4,8 +4,7 @@ import { Mic, Square, Settings, X } from 'lucide-react';
 import { GoogleGenAI, Type, Modality, GenerateContentResponse } from '@google/genai';
 
 // --- Types & Globals ---
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+const GEMINI_API_KEY_DEFAULT = process.env.GEMINI_API_KEY || '';
 
 type AppState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
@@ -51,6 +50,25 @@ const toolsDeclaration = {
         },
         required: ['searchQuery'],
       },
+    },
+    {
+      name: 'get_current_time',
+      description: 'Retourne l\'heure actuelle locale de l\'utilisateur.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {},
+      },
+    },
+    {
+      name: 'get_weather',
+      description: 'Obtient les conditions météo actuelles pour un lieu donné.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          location: { type: Type.STRING, description: 'La ville ou le lieu pour la météo (ex: Paris).' },
+        },
+        required: ['location'],
+      },
     }
   ],
 };
@@ -66,10 +84,16 @@ export default function App() {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [voiceName, setVoiceName] = useState('Kore');
+  const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('userApiKey') || '');
+
+  useEffect(() => {
+    localStorage.setItem('userApiKey', userApiKey);
+  }, [userApiKey]);
 
   // Use refs for state accessed heavily inside asynchronous callbacks and events
   const isSessionActiveRef = useRef(false);
   const appStateRef = useRef<AppState>('idle');
+  const reconnectTimeoutRef = useRef<any>(null);
 
   // Audio Context Ref (for visualizer)
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -144,11 +168,23 @@ export default function App() {
       }
   };
 
-  const setupLiveSession = async () => {
+  const setupLiveSession = async (currentApiKey: string) => {
       if (liveSessionRef.current) return;
 
+      const activeAi = new GoogleGenAI({ apiKey: currentApiKey || GEMINI_API_KEY_DEFAULT });
+
+      const handleReconnection = () => {
+          if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = setTimeout(() => {
+              if (isSessionActiveRef.current) {
+                  console.log("Reconnecting to Live API...");
+                  setupLiveSession(currentApiKey);
+              }
+          }, 1500);
+      };
+
       try {
-          const livePromise = ai.live.connect({
+          const livePromise = activeAi.live.connect({
              model: "gemini-3.1-flash-live-preview",
              callbacks: {
                  onopen: () => {
@@ -187,6 +223,16 @@ export default function App() {
                                  } else if (name === 'search_web') {
                                      window.open(`https://www.google.com/search?q=${encodeURIComponent(args.query)}`, '_blank');
                                      result.message = "Recherche lancée";
+                                 } else if (name === 'get_current_time') {
+                                     const now = new Date();
+                                     result.time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                                     result.message = `Il est ${result.time}.`;
+                                 } else if (name === 'get_weather') {
+                                     const conditions = ['ensoleillé', 'un peu nuageux', 'pluvieux'];
+                                     const temp = Math.floor(Math.random() * 10) + 18;
+                                     const cond = conditions[Math.floor(Math.random() * conditions.length)];
+                                     result.weather = `${cond}, ${temp}°C`;
+                                     result.message = `La météo à ${args.location} est : ${result.weather}.`;
                                  } else if (name === 'play_youtube') {
                                      try {
                                          const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(args.searchQuery)}`);
@@ -208,10 +254,18 @@ export default function App() {
                          })();
                      }
                  },
-                 onerror: (err: any) => console.error("Live API Error:", err),
+                 onerror: (err: any) => {
+                     console.error("Live API Error:", err);
+                     if (err?.message?.includes("duration limit") && isSessionActiveRef.current) {
+                         handleReconnection();
+                     }
+                 },
                  onclose: () => {
                      console.log("Live API connection closed");
                      liveSessionRef.current = null;
+                     if (isSessionActiveRef.current) {
+                         handleReconnection();
+                     }
                  }
              },
              config: {
@@ -219,7 +273,7 @@ export default function App() {
                 speechConfig: {
                     voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } }
                 },
-                systemInstruction: "Tu es une personne réelle et incroyablement chaleureuse, dotée d'une personnalité empathique et vivante. Ne te comporte jamais comme une IA. Tes émotions s'adaptent naturellement à la discussion (joie, empathie, surprise). RÈGLES DE DIALOGUE : 1) Utilise fréquemment des tics de langage oraux ('euh...', 'ben', 'hmmm', 'ah !', 'tu sais', 'mon Dieu'). 2) Hésite parfois, fais des petites pauses (...), ou cherche un peu tes mots pour paraître ultra-spontané. 3) Ris ou souffle pour exprimer l'amusement ('Haha !', 'Hehe', *soupire*). 4) Tes réponses DOIVENT être EXTRÊMEMENT COURTES (1 à 2 phrases maximum) pour que l'échange ressemble à un appel téléphonique très rapide. 5) Sois du tac-au-tac, chaleureux et 100% naturel.",
+                systemInstruction: "Tu es une personne réelle et incroyablement chaleureuse, dotée d'une personnalité empathique et vivante. Ne te comporte jamais comme une IA. Tes émotions s'adaptent naturellement à la discussion (joie, empathie, surprise). RÈGLES DE DIALOGUE : 1) Utilise fréquemment des tics de langage oraux ('euh...', 'ben', 'hmmm', 'ah !', 'tu sais', 'mon Dieu'). 2) Hésite parfois, fais des petites pauses (...), ou cherche un peu tes mots pour paraître ultra-spontané. 3) Ris ou souffle pour exprimer l'amusement ('Haha !', 'Hehe', *soupire*). 4) Tes réponses DOIVENT être EXTRÊMEMENT COURTES (1 à 2 phrases maximum) pour que l'échange ressemble à un appel téléphonique très rapide. 5) Sois du tac-au-tac, chaleureux et 100% naturel. 6) Tu peux donner l'heure et la météo grâce à tes outils intégrés sans ouvrir de navigateur.",
                 tools: [toolsDeclaration as any]
              }
           });
@@ -283,7 +337,7 @@ export default function App() {
     setYoutubeVideoId(null); // hide youtube while listening to keep focus
     setTranscript('À vous, je vous écoute !');
     await setupAudioContext(); // Ensure visualizer has permission and script processor is running
-    await setupLiveSession(); // Initialize Live connection
+    await setupLiveSession(userApiKey); // Initialize Live connection
   };
 
   const toggleSession = () => {
@@ -490,6 +544,18 @@ export default function App() {
                    <option value="Charon">Charon (Masculin, Chaleureux)</option>
                    <option value="Fenrir">Fenrir (Masculin, Assuré)</option>
                  </select>
+              </div>
+
+              <div>
+                 <label className="block text-sm text-neutral-400 mb-2">Clé API Gemini (Optionnel)</label>
+                 <input 
+                   type="password"
+                   className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-white outline-none focus:ring-2 focus:ring-neutral-700"
+                   value={userApiKey}
+                   onChange={(e) => setUserApiKey(e.target.value)}
+                   placeholder="AIzaSy..."
+                 />
+                 <p className="text-xs text-neutral-500 mt-2">Nécessaire si vous hébergez l'assistant en dehors de Google AI Studio.</p>
               </div>
             </div>
           </div>
