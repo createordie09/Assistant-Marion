@@ -290,7 +290,7 @@ export default function App() {
          analyserRef.current = audioContextRef.current.createAnalyser();
          analyserRef.current.fftSize = 256;
          
-         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+         const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
          localStreamRef.current = stream;
          const source = audioContextRef.current.createMediaStreamSource(stream);
          source.connect(analyserRef.current);
@@ -298,7 +298,7 @@ export default function App() {
 
          processorRef.current = audioContextRef.current.createScriptProcessor(4096, 1, 1);
          processorRef.current.onaudioprocess = (e) => {
-             if (!isSessionActiveRef.current || appStateRef.current !== 'listening') return;
+             if (!isSessionActiveRef.current) return;
              if (!liveSessionRef.current) return;
              
              const inputData = e.inputBuffer.getChannelData(0);
