@@ -80,7 +80,7 @@ const getInitialBars = () => Array(BARS_COUNT).fill(10); // Initial height of 10
 export default function App() {
   const [appState, setAppState] = useState<AppState>('idle');
   const [transcript, setTranscript] = useState<string>('Appuyez sur le bouton pour démarrer la discussion');
-  const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
+  const [youtubeQuery, setYoutubeQuery] = useState<string | null>(null);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [voiceName, setVoiceName] = useState('Kore');
@@ -234,18 +234,8 @@ export default function App() {
                                      result.weather = `${cond}, ${temp}°C`;
                                      result.message = `La météo à ${args.location} est : ${result.weather}.`;
                                  } else if (name === 'play_youtube') {
-                                     try {
-                                         const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(args.searchQuery)}`);
-                                         const data = await res.json();
-                                         if (data.videoId) {
-                                             setYoutubeVideoId(data.videoId);
-                                             result.message = "Lecteur affiché avec la vidéo: " + data.title;
-                                         } else {
-                                             result.message = "Erreur: vidéo introuvable.";
-                                         }
-                                     } catch (err) {
-                                         result.message = "Erreur réseau lors de la recherche YouTube.";
-                                     }
+                                     setYoutubeQuery(args.searchQuery);
+                                     result.message = `Lecteur affiché avec la recherche de clip non-officiel/paroles pour "${args.searchQuery}".`;
                                  }
                                  functionResponses.push({ id, name, response: result });
                              }
@@ -334,7 +324,7 @@ export default function App() {
 
   const startListening = async () => {
     setAppState('listening');
-    setYoutubeVideoId(null); // hide youtube while listening to keep focus
+    setYoutubeQuery(null); // hide youtube while listening to keep focus
     setTranscript('À vous, je vous écoute !');
     await setupAudioContext(); // Ensure visualizer has permission and script processor is running
     await setupLiveSession(userApiKey); // Initialize Live connection
@@ -474,14 +464,14 @@ export default function App() {
       </main>
 
       {/* Floating Picture-in-Picture YouTube Player */}
-      {youtubeVideoId && (
+      {youtubeQuery && (
         <motion.div 
            initial={{ opacity: 0, y: -20, scale: 0.9 }}
            animate={{ opacity: 1, y: 0, scale: 1 }}
            className="absolute top-8 right-8 z-40 w-full max-w-[400px] aspect-video rounded-xl overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8)] border border-neutral-700/50 group"
         >
            <button
-             onClick={() => setYoutubeVideoId(null)}
+             onClick={() => setYoutubeQuery(null)}
              className="absolute top-2 right-2 bg-black/60 hover:bg-black/90 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-50 backdrop-blur-md"
            >
              <X size={16} />
@@ -489,7 +479,7 @@ export default function App() {
            <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/80 to-transparent pointer-events-none z-40 opacity-0 group-hover:opacity-100 transition-opacity" />
            <iframe 
               className="w-full h-full border-0 relative z-30 bg-black"
-              src={`https://www.youtube.com/embed/${encodeURIComponent(youtubeVideoId)}?autoplay=1&controls=1&origin=${encodeURIComponent(window.location.origin)}`}
+              src={`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(youtubeQuery + ' lyrics audio')}&autoplay=1&controls=1&origin=${encodeURIComponent(window.location.origin)}`}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
            />
