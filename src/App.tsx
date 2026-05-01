@@ -168,8 +168,11 @@ export default function App() {
       }
   };
 
+  const isConnectingRef = useRef(false);
+
   const setupLiveSession = async (currentApiKey: string) => {
-      if (liveSessionRef.current) return;
+      if (liveSessionRef.current || isConnectingRef.current) return;
+      isConnectingRef.current = true;
 
       const activeAi = new GoogleGenAI({ apiKey: currentApiKey || GEMINI_API_KEY_DEFAULT });
 
@@ -271,15 +274,18 @@ export default function App() {
              config: {
                 responseModalities: [Modality.AUDIO],
                 speechConfig: {
-                    voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } }
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } },
+                    languageCode: 'fr-FR'
                 },
-                systemInstruction: "Tu es un assistant conversationnel avec une voix et un ton ultra-naturels. Comporte-toi comme un humain lors d'un appel téléphonique : chaleureux, clair et posé. RÈGLES DE DIALOGUE : 1) Parle avec fluidité, SANS forcer ni exagérer les émotions, les rires ou les tics de langage (pas de 'euh', 'ben', ou bégaiements excessifs). 2) Fais des réponses concises et directes (1 à 2 phrases) pour garder l'échange très dynamique. 3) Reste attentif, tu peux être interrompu à tout moment par l'utilisateur ; si c'est le cas, arrête-toi et écoute. 4) Sois naturel, poli et pertinent. 5) Utilise tes outils pour donner l'heure, la météo ou jouer de la musique via YouTube dès qu'on te le demande.",
+                systemInstruction: "Tu es un assistant conversationnel avec une voix et un ton ultra-naturels pour une discussion fluide. Comporte-toi comme un humain lors d'un appel téléphonique : chaleureux, clair et posé. RÈGLES DE DIALOGUE : 1) Parle avec fluidité, en incluant de très légères petites humeurs et de discrets tics de langage naturels (un petit rire ou une micro-hésitation) pour paraître vivant, mais SANS JAMAIS FORCER NI EXAGÉRER. 2) Tes réponses DOIVENT être EXTRÊMEMENT COURTES ET RAPIDES (1 à 2 phrases) pour garder l'échange hyper dynamique. 3) Reste attentif, tu peux être interrompu à tout moment par l'utilisateur ; si c'est le cas, arrête-toi et écoute. 4) Sois naturel, poli et pertinent. 5) Utilise tes outils pour donner l'heure, la météo ou jouer de la musique via YouTube dès qu'on te le demande.",
                 tools: [toolsDeclaration as any]
              }
           });
           liveSessionRef.current = livePromise;
+          isConnectingRef.current = false;
       } catch(e) {
           console.error("Live API Session init failed", e);
+          isConnectingRef.current = false;
       }
   };
 
@@ -323,7 +329,11 @@ export default function App() {
          };
          
          source.connect(processorRef.current);
-         processorRef.current.connect(audioContextRef.current.destination);
+         // Mute local monitoring to avoid echo and voice doubling
+         const silentGain = audioContextRef.current.createGain();
+         silentGain.gain.value = 0;
+         processorRef.current.connect(silentGain);
+         silentGain.connect(audioContextRef.current.destination);
        } else if (audioContextRef.current.state === 'suspended') {
          await audioContextRef.current.resume();
        }
