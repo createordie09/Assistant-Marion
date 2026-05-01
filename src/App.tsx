@@ -234,8 +234,18 @@ export default function App() {
                                      result.weather = `${cond}, ${temp}°C`;
                                      result.message = `La météo à ${args.location} est : ${result.weather}.`;
                                  } else if (name === 'play_youtube') {
-                                     setYoutubeQuery(args.searchQuery);
-                                     result.message = `Lecteur affiché avec la recherche de clip non-officiel/paroles pour "${args.searchQuery}".`;
+                                     try {
+                                         const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(args.searchQuery)}`);
+                                         const data = await res.json();
+                                         if (data.videoId) {
+                                             setYoutubeVideoId(data.videoId);
+                                             result.message = "Lecteur affiché avec la vidéo: " + data.title;
+                                         } else {
+                                             result.message = "Erreur: vidéo introuvable.";
+                                         }
+                                     } catch (err) {
+                                         result.message = "Erreur réseau lors de la recherche YouTube.";
+                                     }
                                  }
                                  functionResponses.push({ id, name, response: result });
                              }
