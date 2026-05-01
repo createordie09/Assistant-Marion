@@ -565,7 +565,7 @@ export default function App() {
                    onChange={(e) => setUserApiKey(e.target.value)}
                    placeholder="AIzaSy..."
                  />
-                 <p className="text-xs text-neutral-500 mt-2">Nécessaire si vous hébergez l'assistant en dehors de Google AI Studio.</p>
+                 <p className="text-xs text-neutral-500 mt-2">Nécessaire pour le fonctionnement de l'IA.</p>
               </div>
             </div>
           </div>
