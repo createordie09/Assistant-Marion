@@ -237,11 +237,11 @@ export default function App() {
                                      try {
                                          const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(args.searchQuery)}`);
                                          const data = await res.json();
-                                         if (data.videoId) {
+                                         if (res.ok && data.videoId) {
                                              setYoutubeVideoId(data.videoId);
-                                             result.message = "Lecteur affiché avec la vidéo: " + data.title;
+                                             result.message = "Succès ! Lecteur affiché avec la vidéo: " + data.title + ". Dis-lui de profiter de la musique en une courte phrase !";
                                          } else {
-                                             result.message = "Erreur: vidéo introuvable.";
+                                             result.message = "Échec : vidéo introuvable ou erreur. Dis à l'utilisateur que tu n'as pas trouvé de vidéo musicale correspondante et propose autre chose.";
                                          }
                                      } catch (err) {
                                          result.message = "Erreur réseau lors de la recherche YouTube.";

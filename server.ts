@@ -24,14 +24,28 @@ async function startServer() {
       
       const r = await ytSearch(searchStr);
       
-      // Filter out official channels (VEVO, Topic, Official)
+      // Filter out official channels and strictly require non-official lyrics/karaoke
       const allowedVideos = r.videos.filter(v => {
         const author = v.author.name.toLowerCase();
-        return !author.includes("vevo") && !author.includes("topic") && !author.includes("official");
+        const title = v.title.toLowerCase();
+        
+        const isOfficial = 
+          author.includes("vevo") || 
+          author.includes("topic") || 
+          author.includes("official") || 
+          author.includes("records") || 
+          title.includes("official video") ||
+          title.includes("music video");
+
+        const hasLyrics = 
+          title.includes("lyric") || 
+          title.includes("karaoke") || 
+          title.includes("cover");
+
+        return !isOfficial && hasLyrics;
       });
 
-      // Prefer the allowed videos, fallback to any video if none match
-      const videos = allowedVideos.length > 0 ? allowedVideos : r.videos;
+      const videos = allowedVideos;
 
       if (videos.length === 0) {
         return res.status(404).json({ error: "No video found" });
