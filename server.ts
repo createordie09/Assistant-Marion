@@ -19,13 +19,16 @@ async function startServer() {
       }
 
       console.log("Searching YouTube for:", q);
-      // Automatically append 'lyrics' to favor non-official fan uploads
-      const searchStr = q.toLowerCase().includes("lyrics") ? q : `${q} lyrics`;
+      // Automatically append 'lyrics' or 'audio' to favor non-official fan uploads
+      let searchStr = q.toLowerCase();
+      if (!searchStr.includes("lyrics") && !searchStr.includes("audio")) {
+        searchStr = `${q} lyrics`;
+      }
       
       const r = await ytSearch(searchStr);
       
-      // Filter out official channels and strictly require non-official lyrics/karaoke
-      const allowedVideos = r.videos.filter(v => {
+      // Filter out official channels and strongly prefer non-official videos
+      const nonOfficialVideos = r.videos.filter(v => {
         const author = v.author.name.toLowerCase();
         const title = v.title.toLowerCase();
         
@@ -37,15 +40,22 @@ async function startServer() {
           title.includes("official video") ||
           title.includes("music video");
 
-        const hasLyrics = 
-          title.includes("lyric") || 
-          title.includes("karaoke") || 
-          title.includes("cover");
-
-        return !isOfficial && hasLyrics;
+        return !isOfficial;
       });
 
-      const videos = allowedVideos;
+      // Best effort to find videos with lyrics/audio wording in the title
+      const preferredVideos = nonOfficialVideos.filter(v => {
+         const title = v.title.toLowerCase();
+         return title.includes("lyric") || title.includes("karaoke") || title.includes("cover") || title.includes("audio");
+      });
+
+      // Prefer videos with explicit lyrics/audio keywords in title, but fallback to any non-official video
+      let videos = preferredVideos.length > 0 ? preferredVideos : nonOfficialVideos;
+
+      // If everything is filtered out (which shouldn't happen often), fallback to raw results
+      if (videos.length === 0) {
+         videos = r.videos;
+      }
 
       if (videos.length === 0) {
         return res.status(404).json({ error: "No video found" });
