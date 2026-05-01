@@ -87,6 +87,43 @@ export default function App() {
   const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('userApiKey') || '');
 
   useEffect(() => {
+    // 1. Bloquer le clic droit
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    // 2. Bloquer les raccourcis clavier des DevTools
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Bloquer F12
+      if (e.key === 'F12') {
+        e.preventDefault();
+        return;
+      }
+
+      // Bloquer Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C (Chrome/Edge/Firefox)
+      // Bloquer Ctrl+U (Code source)
+      if (e.ctrlKey && (e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C') || e.key === 'u' || e.key === 'U')) {
+        e.preventDefault();
+        return;
+      }
+      
+      // Adaptation pour Mac (Cmd au lieu de Ctrl)
+      if (e.metaKey && (e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C') || e.altKey && e.key === 'u')) {
+        e.preventDefault();
+        return;
+      }
+    };
+
+    window.addEventListener('contextmenu', handleContextMenu);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('userApiKey', userApiKey);
   }, [userApiKey]);
 
