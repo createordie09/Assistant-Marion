@@ -595,7 +595,7 @@ export default function App() {
   };
 
   return (
-    <div className="relative min-h-screen bg-neutral-950 flex flex-col items-center justify-center font-sans text-neutral-100 overflow-hidden radial-gradient-dark">
+    <div className="relative min-h-screen bg-black flex flex-col items-center justify-center font-sans text-neutral-100 overflow-hidden">
       <div 
         className="absolute w-[60vw] h-[60vw] rounded-full blur-[120px] opacity-10 pointer-events-none transition-all duration-1000 ease-in-out"
         style={{
@@ -606,9 +606,16 @@ export default function App() {
 
       <div className="absolute top-0 left-0 w-full z-50 p-8">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-             <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-             <span className="font-medium text-neutral-300 tracking-[0.2em] text-[10px] uppercase">Oria</span>
+          <div className="flex items-center gap-2 group">
+             <div className="relative">
+               <img 
+                 src="https://i.pinimg.com/originals/9e/87/19/9e87192e1efab92aec706e55c6413eef.gif" 
+                 alt="Oria Logo" 
+                 className="w-16 h-16 object-cover rounded-full group-hover:scale-110 transition-transform duration-500"
+                 referrerPolicy="no-referrer"
+               />
+             </div>
+             <span className="font-serif italic font-bold text-white text-3xl">Oria</span>
           </div>
           
           <div className="flex items-center gap-3">

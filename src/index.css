@@ -1,4 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,700&display=swap');
 @import "tailwindcss";
+
+@theme {
+  --font-serif: "Playfair Display", serif;
+}
 
 @layer base {
   body {
@@ -15,7 +20,4 @@
 }
 
 @layer utilities {
-  .radial-gradient-dark {
-    background: radial-gradient(circle at center, #171717 0%, #0a0a0a 100%);
-  }
 }
