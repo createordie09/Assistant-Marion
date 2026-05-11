@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['updatedAt']) &&
+             (data.get('displayName', '') is string && data.get('displayName', '').size() <= 100) &&
+             (data.get('interests', []) is list);
+    }
+
+    function isValidMemoryEntry(data) {
+      return data.keys().hasAll(['content', 'createdAt']) &&
+             data.content is string && data.content.size() <= 1000 &&
+             data.createdAt == request.time &&
+             (data.get('importance', 3) is int && data.get('importance', 3) >= 1 && data.get('importance', 3) <= 5);
+    }
+
+    // --- Collection Routes ---
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create, update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming());
+      
+      match /memories/{memoryId} {
+        allow list, get: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidMemoryEntry(incoming());
+        allow update, delete: if false; // Memories are immutable for now
+      }
+    }
+  }
+}

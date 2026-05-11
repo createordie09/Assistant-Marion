@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { Mic, Square, Settings, X } from 'lucide-react';
+import { Mic, Square, Settings, X, User, LogOut } from 'lucide-react';
 import { GoogleGenAI, Type, Modality, GenerateContentResponse } from '@google/genai';
+import { auth } from './lib/firebase';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { getUserProfile, saveUserProfile, addMemory, getMemories } from './lib/db';
 
 // --- Types & Globals ---
 const GEMINI_API_KEY_DEFAULT = process.env.GEMINI_API_KEY || '';
@@ -69,6 +72,48 @@ const toolsDeclaration = {
         },
         required: ['location'],
       },
+    },
+    {
+      name: 'save_memory',
+      description: 'Sauvegarde une information importante sur l\'utilisateur (nom, gouts, faits marquants) pour s\'en souvenir plus tard.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          content: { type: Type.STRING, description: 'L\'information à retenir' },
+          category: { type: Type.STRING, description: 'La catégorie (ex: personnel, musique, travail)' },
+          importance: { type: Type.NUMBER, description: 'Importance de 1 à 5' },
+        },
+        required: ['content', 'category'],
+      },
+    },
+    {
+      name: 'get_memories',
+      description: 'Récupère tous les souvenirs et informations précédemment enregistrés sur l\'utilisateur.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {},
+      },
+    },
+    {
+      name: 'get_news',
+      description: 'Récupère les dernières actualités sur un sujet précis.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          topic: { type: Type.STRING, description: 'Le sujet des actualités (ex: IA, Sport, Finance)' },
+        },
+        required: ['topic'],
+      },
+    },
+    {
+      name: 'get_emails',
+      description: 'Recherche et résume les emails récents de l\'utilisateur.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          count: { type: Type.NUMBER, description: 'Nombre d\'emails à récupérer' },
+        },
+      },
     }
   ],
 };
@@ -85,6 +130,36 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [voiceName, setVoiceName] = useState('Kore');
   const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('userApiKey') || '');
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const gmailTokenRef = useRef<string | null>(localStorage.getItem('gmailToken'));
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        gmailTokenRef.current = credential.accessToken;
+        localStorage.setItem('gmailToken', credential.accessToken);
+      }
+    } catch (e) {
+      console.error("Login failed", e);
+    }
+  };
+
+  const handleLogout = () => {
+    auth.signOut();
+    gmailTokenRef.current = null;
+    localStorage.removeItem('gmailToken');
+  };
 
   useEffect(() => {
     // 1. Bloquer le clic droit
@@ -228,8 +303,7 @@ export default function App() {
              model: "gemini-3.1-flash-live-preview",
              callbacks: {
                  onopen: () => {
-                     // We successfully connected! The microphone streaming is handled in startListening,
-                     // but we can ensure audio processing starts.
+                     // We successfully connected!
                  },
                  onmessage: async (message: any) => {
                      // Handle audio output from Gemini
@@ -244,10 +318,6 @@ export default function App() {
                      }
                      if (message.serverContent?.interrupted) {
                          interruptPlayback();
-                     }
-                     if (message.serverContent?.turnComplete) {
-                         // End of server chunk generation, we do nothing here
-                         // since `onended` of the audio playback will reset UI to listening
                      }
                      if (message.toolCall) {
                          // Handle tool calls instantly!
@@ -279,12 +349,66 @@ export default function App() {
                                          const data = await res.json();
                                          if (res.ok && data.videoId) {
                                              setYoutubeVideoId(data.videoId);
-                                             result.message = "Succès ! Lecteur affiché avec la vidéo: " + data.title + ". Dis-lui de profiter de la musique en une courte phrase !";
+                                             result.message = "Succès ! Lecteur affiché avec la vidéo: " + data.title + ".";
                                          } else {
-                                             result.message = "Échec : vidéo introuvable ou erreur. Dis à l'utilisateur que tu n'as pas trouvé de vidéo musicale correspondante et propose autre chose.";
+                                             result.message = "Échec : vidéo introuvable.";
                                          }
                                      } catch (err) {
                                          result.message = "Erreur réseau lors de la recherche YouTube.";
+                                     }
+                                 } else if (name === 'save_memory') {
+                                     if (currentUser) {
+                                         await addMemory(currentUser.uid, args.content, args.category, args.importance || 3);
+                                         result.message = "Souvenir enregistré.";
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
+                                     }
+                                 } else if (name === 'get_memories') {
+                                     if (currentUser) {
+                                         const memories = await getMemories(currentUser.uid);
+                                         result.memories = memories;
+                                         result.message = "Souvenirs récupérés.";
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
+                                     }
+                                 } else if (name === 'get_news') {
+                                     window.open(`https://www.google.com/search?q=${encodeURIComponent(args.topic + ' news')}`, '_blank');
+                                     result.message = `Actualités pour ${args.topic}.`;
+                                 } else if (name === 'get_emails') {
+                                     if (gmailTokenRef.current) {
+                                         try {
+                                             const count = args.count || 3;
+                                             const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${count}`, {
+                                                 headers: { 'Authorization': `Bearer ${gmailTokenRef.current}` }
+                                             });
+                                             const listData = await res.json();
+                                             
+                                             if (listData.error) {
+                                                 throw new Error(listData.error.message);
+                                             }
+
+                                             const messages = [];
+                                             for (const msg of (listData.messages || [])) {
+                                                 const detailRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${msg.id}`, {
+                                                     headers: { 'Authorization': `Bearer ${gmailTokenRef.current}` }
+                                                 });
+                                                 const detail = await detailRes.json();
+                                                 const subject = detail.payload.headers.find((h: any) => h.name === 'Subject')?.value || '(Pas d\'objet)';
+                                                 const from = detail.payload.headers.find((h: any) => h.name === 'From')?.value || 'Inconnu';
+                                                 messages.push({
+                                                     snippet: detail.snippet,
+                                                     subject: subject,
+                                                     from: from
+                                                 });
+                                             }
+                                             result.emails = messages;
+                                             result.message = `J'ai trouvé ${messages.length} emails. Voici les résumés : ${messages.map(m => `De ${m.from} : ${m.subject} - ${m.snippet}`).join(' | ')}`;
+                                         } catch (e: any) {
+                                             console.error("Gmail Error", e);
+                                             result.message = "Erreur Gmail : " + (e.message || "Impossible de lire les emails. Vous devez peut-être vous reconnecter pour autoriser l'accès.");
+                                         }
+                                     } else {
+                                         result.message = "Échec : Vous devez vous connecter avec votre compte Google et autoriser l'accès Gmail.";
                                      }
                                  }
                                  functionResponses.push({ id, name, response: result });
@@ -314,7 +438,7 @@ export default function App() {
                     voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } },
                     languageCode: 'fr-FR'
                 },
-                systemInstruction: "Tu es un assistant conversationnel avec une voix et un ton ultra-naturels pour une discussion fluide. Comporte-toi comme un humain lors d'un appel téléphonique : chaleureux, clair et posé. RÈGLES DE DIALOGUE : 1) Parle avec fluidité, en incluant de très légères petites humeurs et de discrets tics de langage naturels (un petit rire ou une micro-hésitation) pour paraître vivant, mais SANS JAMAIS FORCER NI EXAGÉRER. 2) Tes réponses DOIVENT être EXTRÊMEMENT COURTES ET RAPIDES (1 à 2 phrases) pour garder l'échange hyper dynamique. 3) Reste attentif, tu peux être interrompu à tout moment par l'utilisateur ; si c'est le cas, arrête-toi et écoute. 4) Sois naturel, poli et pertinent. 5) Utilise tes outils pour donner l'heure, la météo ou jouer de la musique via YouTube dès qu'on te le demande.",
+                systemInstruction: "Tu t'appelles Oria. Tu es un assistant conversationnel avec une voix et un ton ultra-naturels. Comporte-toi comme un humain lors d'un appel téléphonique : chaleureux, clair et posé. TU AS UNE MÉMOIRE : Utilise 'get_memories' au début de la conversation pour te rappeler de qui est l'utilisateur et ce qu'il aime. Utilise 'save_memory' dès que tu apprends un fait intéressant. RÈGLES DE DIALOGUE : 1) Parle avec fluidité, en incluant de très légères petites humeurs et de discrets tics de langage naturels (un petit rire ou une micro-hésitation) pour paraître vivant, mais SANS JAMAIS FORCER NI EXAGÉRER. 2) Tes réponses DOIVENT être EXTRÊMEMENT COURTES ET RAPIDES (1 à 2 phrases) pour garder l'échange hyper dynamique. 3) Reste attentif, tu peux être interrompu à tout moment par l'utilisateur ; si c'est le cas, arrête-toi et écoute. 4) Sois naturel, poli et pertinent. 5) Utilise tes outils pour donner l'heure, la météo, jouer de la musique via YouTube, ou gérer tes souvenirs.",
                 tools: [toolsDeclaration as any]
              }
           });
@@ -480,8 +604,64 @@ export default function App() {
         }}
       />
 
-      <div className="absolute top-8 w-full px-8 opacity-80 flex items-center gap-2">
-         <span className="font-semibold text-neutral-400 tracking-tight text-sm">Assistant 4o Pro</span>
+      <div className="absolute top-0 left-0 w-full z-50 p-8">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+             <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+             <span className="font-medium text-neutral-300 tracking-[0.2em] text-[10px] uppercase">Oria</span>
+          </div>
+          
+          <div className="flex items-center gap-3">
+             <button 
+               onClick={() => setShowSettings(true)}
+               className="p-2.5 text-neutral-500 hover:text-white bg-white/[0.03] hover:bg-white/[0.08] backdrop-blur-md rounded-full border border-white/5 transition-all"
+             >
+               <Settings size={16} />
+             </button>
+
+             {currentUser ? (
+               <div className="flex items-center gap-2">
+                 <motion.div 
+                   initial={{ opacity: 0, x: 20 }}
+                   animate={{ opacity: 1, x: 0 }}
+                   className="flex items-center bg-white/[0.03] backdrop-blur-xl p-1 rounded-full border border-white/10"
+                 >
+                   {currentUser.photoURL ? (
+                     <img src={currentUser.photoURL} alt="" className="w-8 h-8 rounded-full border border-white/10 object-cover" />
+                   ) : (
+                     <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center border border-white/10">
+                       <User size={14} className="text-neutral-400" />
+                     </div>
+                   )}
+                 </motion.div>
+                 
+                 <motion.button 
+                   initial={{ opacity: 0 }}
+                   animate={{ opacity: 1 }}
+                   onClick={handleLogout}
+                   className="p-2.5 text-neutral-500 hover:text-red-400 bg-white/[0.03] hover:bg-white/[0.08] backdrop-blur-md rounded-full border border-white/5 transition-all"
+                   title="Déconnexion"
+                 >
+                   <LogOut size={16} />
+                 </motion.button>
+               </div>
+             ) : (
+               <motion.button 
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 whileHover={{ scale: 1.02 }}
+                 whileTap={{ scale: 0.98 }}
+                 onClick={handleLogin}
+                 className="flex items-center gap-2.5 bg-white/[0.05] hover:bg-white/[0.1] backdrop-blur-md text-white border border-white/10 px-5 py-2.5 rounded-full text-[11px] font-medium transition-all shadow-2xl"
+               >
+                 <div className="w-4 h-4 bg-white rounded-full flex items-center justify-center">
+                    <User size={10} className="text-black" />
+                 </div>
+                 Se connecter avec Google
+               </motion.button>
+             )}
+          </div>
+        </div>
       </div>
 
       <main className="z-10 w-full max-w-4xl flex flex-col items-center p-8 gap-16">
@@ -523,9 +703,9 @@ export default function App() {
       {/* Floating Picture-in-Picture YouTube Player */}
       {youtubeVideoId && (
         <motion.div 
-           initial={{ opacity: 0, y: -20, scale: 0.9 }}
+           initial={{ opacity: 0, y: 20, scale: 0.9 }}
            animate={{ opacity: 1, y: 0, scale: 1 }}
-           className="absolute top-8 right-8 z-40 w-full max-w-[400px] aspect-video rounded-xl overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8)] border border-neutral-700/50 group"
+           className="absolute bottom-8 left-8 z-40 w-full max-w-[400px] aspect-video rounded-xl overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8)] border border-neutral-700/50 group"
         >
            <button
              onClick={() => setYoutubeVideoId(null)}
@@ -558,14 +738,7 @@ export default function App() {
         </button>
       </div>
 
-      <div className="absolute bottom-8 left-8 flex items-center gap-4">
-        <button
-           onClick={() => setShowSettings(true)}
-           className="h-14 w-14 flex items-center justify-center rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
-        >
-           <Settings size={22} />
-        </button>
-      </div>
+      {/* Removing bottom settings button as it moved to header */}
 
       {showSettings && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

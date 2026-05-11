@@ -6,6 +6,8 @@
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
+    overflow: hidden;
+    @apply bg-black selection:bg-white selection:text-black;
   }
   img {
     pointer-events: none;

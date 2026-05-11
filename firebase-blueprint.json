@@ -1,0 +1,38 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Information about the user including preferences and settings.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string", "description": "The user's preferred name." },
+        "interests": { "type": "array", "description": "List of topics the user is interested in." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["createdAt", "updatedAt"]
+    },
+    "MemoryEntry": {
+      "title": "Memory Entry",
+      "description": "A specific piece of information learned about the user during conversations.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string", "description": "The actual fact or preference learned." },
+        "category": { "type": "string", "description": "The nature of the memory (e.g., 'music', 'work', 'personal')." },
+        "importance": { "type": "integer", "description": "How significant this information is (1-5)." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["content", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores core user profile data."
+    },
+    "/users/{userId}/memories/{memoryId}": {
+      "schema": "MemoryEntry",
+      "description": "Stores individual memory grains for the user."
+    }
+  }
+}
