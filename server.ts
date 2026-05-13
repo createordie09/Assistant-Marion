@@ -10,6 +10,31 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // --- Security Middlewares ---
+  app.use((req, res, next) => {
+    // Basic security headers
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    
+    // Content Security Policy
+    // We need to allow Google APIs, YouTube, and Pinterest (for the logo)
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com",
+      "connect-src 'self' https://generativelanguage.googleapis.com https://gmail.googleapis.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://generativelanguage.googleapis.com",
+      "img-src 'self' data: https://i.pinimg.com https://*.googleusercontent.com https://www.gstatic.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "frame-src 'self' https://www.youtube.com https://*.firebaseapp.com",
+      "media-src 'self' blob:"
+    ].join("; ");
+    
+    res.setHeader("Content-Security-Policy", csp);
+    next();
+  });
+
   // API Route to search YouTube and return a video ID safely
   app.get("/api/search-youtube", async (req, res) => {
     try {

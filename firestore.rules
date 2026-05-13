@@ -1,12 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Global Safety Net
+    // Global Safety Net - Default Deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // --- Helpers ---
+    // --- Primitives & Globals ---
     function isSignedIn() {
       return request.auth != null;
     }
@@ -28,28 +28,56 @@ service cloud.firestore {
     }
 
     // --- Validation Blueprints ---
+    
+    // User Profile Validation
     function isValidUserProfile(data) {
       return data.keys().hasAll(['updatedAt']) &&
+             // Limit total keys to prevent shadow fields
+             data.keys().size() <= 6 &&
              (data.get('displayName', '') is string && data.get('displayName', '').size() <= 100) &&
-             (data.get('interests', []) is list);
+             (data.get('interests', []) is list && data.get('interests', []).size() <= 50) &&
+             (data.get('updatedAt', request.time) == request.time);
     }
 
+    // Memory Entry Validation
     function isValidMemoryEntry(data) {
-      return data.keys().hasAll(['content', 'createdAt']) &&
+      return data.keys().hasAll(['content', 'category', 'createdAt']) &&
+             // Strict size for creation (content, category, createdAt, importance)
+             data.keys().size() <= 4 &&
              data.content is string && data.content.size() <= 1000 &&
+             data.category is string && data.category.size() <= 50 &&
              data.createdAt == request.time &&
              (data.get('importance', 3) is int && data.get('importance', 3) >= 1 && data.get('importance', 3) <= 5);
     }
 
-    // --- Collection Routes ---
+    // --- Collection Rules ---
+
     match /users/{userId} {
+      // Basic profile access
       allow get: if isOwner(userId) && isValidId(userId);
-      allow create, update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming());
       
+      allow create: if isOwner(userId) && isValidId(userId) && 
+                      incoming().keys().hasAll(['createdAt', 'updatedAt']) &&
+                      incoming().createdAt == request.time &&
+                      isValidUserProfile(incoming());
+                      
+      allow update: if isOwner(userId) && isValidId(userId) && 
+                      isValidUserProfile(incoming()) &&
+                      incoming().updatedAt == request.time &&
+                      // Ensure createdAt is immutable
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'interests', 'updatedAt']);
+
       match /memories/{memoryId} {
+        // Only the owner can list or get their memories
         allow list, get: if isOwner(userId) && isValidId(userId);
-        allow create: if isOwner(userId) && isValidId(userId) && isValidMemoryEntry(incoming());
-        allow update, delete: if false; // Memories are immutable for now
+        
+        // Strict creation
+        allow create: if isOwner(userId) && isValidId(userId) && 
+                        isValidMemoryEntry(incoming());
+        
+        // Memories are essentially immutable to maintain integrity of AI notes
+        allow update, delete: if false;
       }
     }
   }

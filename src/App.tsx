@@ -826,15 +826,14 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
               </div>
 
               <div>
-                 <label className="block text-sm text-neutral-400 mb-2">Clé API Gemini (Optionnel)</label>
+                 <label className="block text-sm text-neutral-400 mb-2">Clé API Gemini</label>
                  <input 
                    type="password"
                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-white outline-none focus:ring-2 focus:ring-neutral-700"
                    value={userApiKey}
                    onChange={(e) => setUserApiKey(e.target.value)}
-                   placeholder="AIzaSy..."
+                   placeholder={GEMINI_API_KEY_DEFAULT ? "Utilise la clé du serveur (Recommandé)" : "AIzaSy..."}
                  />
-                 <p className="text-xs text-neutral-500 mt-2">Nécessaire pour le fonctionnement de l'IA.</p>
               </div>
             </div>
           </div>
