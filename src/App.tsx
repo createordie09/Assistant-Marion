@@ -131,11 +131,17 @@ export default function App() {
   const [voiceName, setVoiceName] = useState('Kore');
   const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('userApiKey') || '');
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [gmailError, setGmailError] = useState(false);
   const gmailTokenRef = useRef<string | null>(localStorage.getItem('gmailToken'));
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      // Si l'utilisateur change ou se déconnecte, on vérifie la cohérence du token
+      if (!user) {
+        gmailTokenRef.current = null;
+        localStorage.removeItem('gmailToken');
+      }
     });
     return () => unsub();
   }, []);
@@ -144,11 +150,15 @@ export default function App() {
     try {
       const provider = new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+      // On force la sélection du compte pour éviter les erreurs de session persistante corrompue
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
       const result = await signInWithPopup(auth, provider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       if (credential?.accessToken) {
         gmailTokenRef.current = credential.accessToken;
         localStorage.setItem('gmailToken', credential.accessToken);
+        setGmailError(false);
       }
     } catch (e) {
       console.error("Login failed", e);
@@ -159,6 +169,7 @@ export default function App() {
     auth.signOut();
     gmailTokenRef.current = null;
     localStorage.removeItem('gmailToken');
+    setGmailError(false);
   };
 
   useEffect(() => {
@@ -381,6 +392,14 @@ export default function App() {
                                              const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=${count}`, {
                                                  headers: { 'Authorization': `Bearer ${gmailTokenRef.current}` }
                                              });
+
+                                             if (res.status === 401) {
+                                                 gmailTokenRef.current = null;
+                                                 localStorage.removeItem('gmailToken');
+                                                 setGmailError(true);
+                                                 throw new Error("Session expirée. Veuillez cliquer sur 'Sync Gmail' en haut.");
+                                             }
+
                                              const listData = await res.json();
                                              
                                              if (listData.error) {
@@ -446,7 +465,7 @@ Réponds toujours en 1 à 2 phrases maximum. Pas de listes visuelles, pas de bul
 GESTION DES LISTES
 Si l'utilisateur demande une liste (courses, tâches, idées...), énonce les éléments à l'oral de façon fluide et naturelle, sans les numéroter ni les formater. Propose ensuite spontanément de sauvegarder cette liste en mémoire via save_memory. Ne refuse jamais une liste, adapte simplement le rendu pour l'oral.
 GESTION DES EMAILS
-Quand l'utilisateur demande ses emails, appelle get_emails et résume chaque mail en une phrase orale : qui a écrit, sur quoi, et si c'est urgent ou non. Si un email semble important (facture, rendez-vous, demande urgente), signale-le clairement mais calmement. Ne lis jamais un email mot pour mot — reformule toujours de façon naturelle et concise. Ne répète jamais à voix haute des informations sensibles : numéros, codes, mots de passe. Si l'accès Gmail échoue, explique simplement qu'une reconnexion est nécessaire.
+Quand l'utilisateur demande ses emails, appelle get_emails et résume chaque mail en une phrase orale : qui a écrit, sur quoi, et si c'est urgent ou non. Si un email semble important (facture, rendez-vous, demande urgente), signale-le clairement mais calmement. Ne lis jamais un email mot pour mot — reformule toujours de façon naturelle et concise. Ne répète jamais à voix haute des informations sensibles : numéros, codes, mots de passe. Si l'accès Gmail échoue, explique simplement qu'un clic sur le bouton 'Sync Gmail' en haut à droite est nécessaire pour reconnecter.
 ADAPTATION À L'HUMEUR
 Si l'utilisateur semble stressé, fatigué ou de mauvaise humeur, adapte-toi : ralentis légèrement, sois encore plus doux et évite l'humour. Si au contraire il est enjoué, sois plus vif et complice. Lis le ton autant que les mots.
 GESTION DES SILENCES
@@ -650,6 +669,17 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
 
              {currentUser ? (
                <div className="flex items-center gap-2">
+                 {(!gmailTokenRef.current || gmailError) && (
+                   <motion.button
+                     initial={{ opacity: 0, scale: 0.8 }}
+                     animate={{ opacity: 1, scale: 1 }}
+                     onClick={handleLogin}
+                     className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-full text-[10px] font-medium hover:bg-amber-500/20 transition-all mr-1"
+                   >
+                     <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                     Sync Gmail
+                   </motion.button>
+                 )}
                  <motion.div 
                    initial={{ opacity: 0, x: 20 }}
                    animate={{ opacity: 1, x: 0 }}
