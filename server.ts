@@ -24,7 +24,7 @@ async function startServer() {
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://www.gstatic.com",
       "connect-src 'self' https://generativelanguage.googleapis.com https://gmail.googleapis.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://generativelanguage.googleapis.com",
-      "img-src 'self' data: https://i.pinimg.com https://*.googleusercontent.com https://www.gstatic.com",
+      "img-src 'self' data: https://i.pinimg.com https://*.googleusercontent.com https://www.gstatic.com https://image.noelshack.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "frame-src 'self' https://www.youtube.com https://*.firebaseapp.com",

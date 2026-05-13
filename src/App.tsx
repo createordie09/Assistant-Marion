@@ -647,17 +647,16 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
 
       <div className="absolute top-0 left-0 w-full z-50 p-8">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 group">
-             <div className="relative">
-               <img 
-                 src="https://i.pinimg.com/originals/9e/87/19/9e87192e1efab92aec706e55c6413eef.gif" 
+            <div className="flex items-center gap-2">
+               <motion.img 
+                 initial={{ opacity: 0, scale: 0.5 }}
+                 animate={{ opacity: 1, scale: 1 }}
+                 src="https://image.noelshack.com/fichiers/2026/20/3/1778684004-oria.png" 
                  alt="Oria Logo" 
-                 className="w-16 h-16 object-cover rounded-full group-hover:scale-110 transition-transform duration-500"
+                 className="h-10 w-auto object-contain"
                  referrerPolicy="no-referrer"
                />
-             </div>
-             <span className="font-serif italic font-bold text-white text-3xl">Oria</span>
-          </div>
+            </div>
           
           <div className="flex items-center gap-3">
              <button 
