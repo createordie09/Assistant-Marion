@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Mic, Square, Settings, X, User, LogOut } from 'lucide-react';
 import { GoogleGenAI, Type, Modality, GenerateContentResponse } from '@google/genai';
 import { auth } from './lib/firebase';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { getUserProfile, saveUserProfile, addMemory, getMemories } from './lib/db';
 
 // --- Types & Globals ---
@@ -153,12 +153,27 @@ export default function App() {
       // On force la sélection du compte pour éviter les erreurs de session persistante corrompue
       provider.setCustomParameters({ prompt: 'select_account' });
       
-      const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (credential?.accessToken) {
-        gmailTokenRef.current = credential.accessToken;
-        localStorage.setItem('gmailToken', credential.accessToken);
-        setGmailError(false);
+      const isElectron = navigator.userAgent.toLowerCase().includes('electron');
+
+      if (isElectron) {
+        await signInWithRedirect(auth, provider);
+        const result = await getRedirectResult(auth);
+        if (result) {
+          const credential = GoogleAuthProvider.credentialFromResult(result);
+          if (credential?.accessToken) {
+            gmailTokenRef.current = credential.accessToken;
+            localStorage.setItem('gmailToken', credential.accessToken);
+            setGmailError(false);
+          }
+        }
+      } else {
+        const result = await signInWithPopup(auth, provider);
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        if (credential?.accessToken) {
+          gmailTokenRef.current = credential.accessToken;
+          localStorage.setItem('gmailToken', credential.accessToken);
+          setGmailError(false);
+        }
       }
     } catch (e) {
       console.error("Login failed", e);
