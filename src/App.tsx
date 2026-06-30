@@ -4,7 +4,7 @@ import { Mic, Square, Settings, X, User, LogOut } from 'lucide-react';
 import { GoogleGenAI, Type, Modality, GenerateContentResponse } from '@google/genai';
 import { auth } from './lib/firebase';
 import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { getUserProfile, saveUserProfile, addMemory, getMemories, addConversationMessage, generateAndSaveDailySummary, getConversationSummary } from './lib/db';
+import { getUserProfile, saveUserProfile, addMemory, getMemories, addConversationMessage, generateAndSaveDailySummary, getConversationSummary, createReminder, getDueReminders, completeReminder } from './lib/db';
 import { getUserLocation } from './lib/geolocation';
 
 // --- Types & Globals ---
@@ -132,6 +132,37 @@ const toolsDeclaration = {
         properties: {
           count: { type: Type.NUMBER, description: 'Nombre d\'emails à récupérer' },
         },
+      },
+    },
+    {
+      name: 'create_reminder',
+      description: 'Crée un nouveau rappel avec une date et heure précise (ISO 8601).',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          content: { type: Type.STRING, description: 'Ce qu\'il faut rappeler' },
+          dueAt: { type: Type.STRING, description: 'Date et heure exacte du rappel au format ISO 8601' },
+        },
+        required: ['content', 'dueAt'],
+      },
+    },
+    {
+      name: 'complete_reminder',
+      description: 'Marque un rappel existant comme terminé.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          reminderId: { type: Type.STRING, description: 'L\'identifiant unique du rappel' },
+        },
+        required: ['reminderId'],
+      },
+    },
+    {
+      name: 'get_due_reminders',
+      description: 'Récupère la liste des rappels échus et non terminés.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {},
       },
     }
   ],
@@ -362,9 +393,13 @@ export default function App() {
           const livePromise = activeAi.live.connect({
              model: "gemini-3.1-flash-live-preview",
              callbacks: {
-                 onopen: () => {
+                 onopen: async () => {
                      // We successfully connected!
                      reconnectAttemptsRef.current = 0;
+                     const session: any = await livePromise;
+                     session.sendRealtimeInput({
+                         text: "Vérifie s'il y a des rappels en attente via get_due_reminders et préviens l'utilisateur naturellement s'il y en a, sinon ne dis rien à ce sujet."
+                     });
                  },
                  onmessage: async (message: any) => {
                      // Handle transcriptions for DB persistence
@@ -434,16 +469,52 @@ export default function App() {
                                          result.message = "Localisation indisponible : l'utilisateur n'a pas autorisé l'accès ou la géolocalisation a échoué.";
                                      }
                                  } else if (name === 'get_weather') {
-                                     let location = args.location;
-                                     if (!location) {
-                                         const locData = await getUserLocation();
-                                         location = locData ? locData.city : 'un lieu inconnu';
+                                     let lat: number | null = null;
+                                     let lon: number | null = null;
+                                     let locationName = args.location;
+
+                                     try {
+                                         if (locationName) {
+                                             const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(locationName)}&count=1`);
+                                             const geoData = await geoRes.json();
+                                             if (geoData.results && geoData.results.length > 0) {
+                                                 lat = geoData.results[0].latitude;
+                                                 lon = geoData.results[0].longitude;
+                                                 locationName = geoData.results[0].name;
+                                             } else {
+                                                 throw new Error("lieu introuvable");
+                                             }
+                                         } else {
+                                             const locData = await getUserLocation();
+                                             if (locData) {
+                                                 lat = locData.latitude;
+                                                 lon = locData.longitude;
+                                                 locationName = locData.city;
+                                             } else {
+                                                 throw new Error("localisation impossible");
+                                             }
+                                         }
+
+                                         const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,wind_speed_10m&timezone=auto`);
+                                         const weatherData = await weatherRes.json();
+                                         const current = weatherData.current;
+                                         
+                                         const getWmoDesc = (code: number) => {
+                                             if (code === 0) return "ciel dégagé";
+                                             if (code >= 1 && code <= 3) return "partiellement nuageux";
+                                             if (code === 45 || code === 48) return "brouillard";
+                                             if (code >= 51 && code <= 67) return "pluie";
+                                             if (code >= 71 && code <= 77) return "neige";
+                                             if (code >= 80 && code <= 99) return "orage";
+                                             return "inconnu";
+                                         };
+
+                                         const desc = getWmoDesc(current.weather_code);
+                                         result.weather = `${desc}, ${current.temperature_2m}°C`;
+                                         result.message = `Il fait ${current.temperature_2m}°C (${desc}) à ${locationName}.`;
+                                     } catch (e: any) {
+                                         result.message = `Impossible d'obtenir la météo : ${e.message}`;
                                      }
-                                     const conditions = ['ensoleillé', 'un peu nuageux', 'pluvieux'];
-                                     const temp = Math.floor(Math.random() * 10) + 18;
-                                     const cond = conditions[Math.floor(Math.random() * conditions.length)];
-                                     result.weather = `${cond}, ${temp}°C`;
-                                     result.message = `La météo à ${location} est : ${result.weather}.`;
                                  } else if (name === 'play_youtube') {
                                      try {
                                          const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(args.searchQuery)}`);
@@ -485,8 +556,33 @@ export default function App() {
                                          result.message = "Échec : utilisateur non connecté.";
                                      }
                                  } else if (name === 'get_news') {
-                                     window.open(`https://www.google.com/search?q=${encodeURIComponent(args.topic + ' news')}`, '_blank');
-                                     result.message = `Actualités pour ${args.topic}.`;
+                                     try {
+                                         const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(args.topic)}&hl=fr&gl=FR&ceid=FR:fr`;
+                                         const res = await fetch(rssUrl);
+                                         if (!res.ok) throw new Error("Network response was not ok");
+                                         const xmlText = await res.text();
+                                         
+                                         const parser = new DOMParser();
+                                         const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+                                         const items = Array.from(xmlDoc.querySelectorAll("item")).slice(0, 5);
+                                         
+                                         if (items.length > 0) {
+                                             const titles = items.map(item => item.querySelector("title")?.textContent || "");
+                                             result.articles = titles;
+                                             
+                                             const spokenTitles = titles.slice(0, 4);
+                                             if (spokenTitles.length > 1) {
+                                                 const last = spokenTitles.pop();
+                                                 result.message = `Sur le sujet ${args.topic}, voici quelques actualités : ${spokenTitles.join(', ')} et ${last}.`;
+                                             } else {
+                                                 result.message = `Voici une actualité sur ${args.topic} : ${spokenTitles[0]}.`;
+                                             }
+                                         } else {
+                                             result.message = `Je n'ai pas trouvé d'actualités récentes sur ${args.topic}.`;
+                                         }
+                                     } catch (e: any) {
+                                         result.message = `Je n'ai pas trouvé d'actualités récentes sur ${args.topic}.`;
+                                     }
                                  } else if (name === 'get_emails') {
                                      if (gmailTokenRef.current) {
                                          try {
@@ -530,6 +626,41 @@ export default function App() {
                                          }
                                      } else {
                                          result.message = "Échec : Vous devez vous connecter avec votre compte Google et autoriser l'accès Gmail.";
+                                     }
+                                 } else if (name === 'create_reminder') {
+                                     if (currentUser) {
+                                         try {
+                                             const reminderId = await createReminder(currentUser.uid, args.content, args.dueAt);
+                                             result.reminderId = reminderId;
+                                             result.message = "Rappel créé avec succès.";
+                                         } catch (e: any) {
+                                             result.message = "Échec de la création du rappel.";
+                                         }
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
+                                     }
+                                 } else if (name === 'complete_reminder') {
+                                     if (currentUser) {
+                                         try {
+                                             await completeReminder(currentUser.uid, args.reminderId);
+                                             result.message = "Rappel marqué comme terminé.";
+                                         } catch (e: any) {
+                                             result.message = "Échec de la complétion du rappel.";
+                                         }
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
+                                     }
+                                 } else if (name === 'get_due_reminders') {
+                                     if (currentUser) {
+                                         try {
+                                             const reminders = await getDueReminders(currentUser.uid);
+                                             result.reminders = reminders;
+                                             result.message = `Il y a ${reminders.length} rappels en attente.`;
+                                         } catch (e: any) {
+                                             result.message = "Échec de la récupération des rappels.";
+                                         }
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
                                      }
                                  }
                                  functionResponses.push({ id, name, response: result });
@@ -579,7 +710,7 @@ Si l'utilisateur semble stressé, fatigué ou de mauvaise humeur, adapte-toi : r
 GESTION DES SILENCES
 Si l'utilisateur ne répond pas après une question ouverte, fais une seule relance douce et brève. Une seule fois, jamais deux.
 RAPPELS ET TÂCHES
-Si l'utilisateur mentionne quelque chose à faire plus tard ("il faut que je rappelle Karim", "je dois envoyer ce document"), relève-le spontanément : "Tu veux que je m'en souvienne pour toi ?" puis sauvegarde si oui via save_memory.
+Si l'utilisateur mentionne quelque chose à faire plus tard ("il faut que je rappelle Karim", "je dois envoyer ce document"), relève-le spontanément : "Tu veux que je m'en souvienne pour toi ?" puis sauvegarde si oui via save_memory. Dès le début de chaque session, vérifie silencieusement s'il y a des rappels en attente via get_due_reminders. S'il y en a, préviens l'utilisateur dès que possible dans la conversation de façon naturelle ('Au fait, tu voulais que je te rappelle...'), pas en première phrase robotique. Une fois qu'un rappel a été mentionné à l'utilisateur, appelle complete_reminder pour le marquer comme fait, sauf si l'utilisateur dit explicitement qu'il faut le garder actif. Quand tu crées un rappel avec create_reminder, calcule toujours une date ISO précise à partir de l'heure actuelle réelle (utilise get_current_time si besoin) et jamais une estimation approximative.
 UTILISATION DES OUTILS
 Utilise les outils silencieusement : ne dis jamais "je vais lancer l'outil X", exécute et donne directement le résultat. Pour la musique, confirme ce que tu lances en une phrase naturelle. Pour la météo ou l'heure, réponds directement sans introduction inutile.
 LANGUE

@@ -4,8 +4,10 @@ import {
   getDoc, 
   setDoc, 
   addDoc, 
+  updateDoc,
   query, 
   orderBy,
+  where,
   getDocs, 
   serverTimestamp,
   type FieldValue
@@ -178,5 +180,59 @@ export async function getConversationSummary(userId: string, period: string) {
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
     return null;
+  }
+}
+
+export async function createReminder(userId: string, content: string, dueAt: string) {
+  const path = `users/${userId}/reminders`;
+  try {
+    const remindersRef = collection(db, path);
+    const docRef = await addDoc(remindersRef, {
+      content,
+      dueAt,
+      done: false,
+      createdAt: serverTimestamp()
+    });
+    return docRef.id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+export async function getDueReminders(userId: string) {
+  const path = `users/${userId}/reminders`;
+  try {
+    const remindersRef = collection(db, path);
+    const q = query(remindersRef, where("done", "==", false));
+    const querySnapshot = await getDocs(q);
+    const nowStr = new Date().toISOString();
+    
+    let dueReminders: { id: string; content: string; dueAt: string; done: boolean }[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.dueAt <= nowStr) {
+        dueReminders.push({ id: doc.id, content: data.content, dueAt: data.dueAt, done: data.done });
+      }
+    });
+    
+    dueReminders.sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+    return dueReminders;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+}
+
+export async function completeReminder(userId: string, reminderId: string) {
+  const path = `users/${userId}/reminders/${reminderId}`;
+  try {
+    await updateDoc(doc(db, path), {
+      done: true,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+    throw error;
   }
 }
