@@ -5,6 +5,7 @@ import { GoogleGenAI, Type, Modality, GenerateContentResponse } from '@google/ge
 import { auth } from './lib/firebase';
 import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { getUserProfile, saveUserProfile, addMemory, getMemories, addConversationMessage, generateAndSaveDailySummary, getConversationSummary } from './lib/db';
+import { getUserLocation } from './lib/geolocation';
 
 // --- Types & Globals ---
 const GEMINI_API_KEY_DEFAULT = process.env.GEMINI_API_KEY || '';
@@ -63,6 +64,14 @@ const toolsDeclaration = {
       },
     },
     {
+      name: 'get_user_location',
+      description: 'Récupère la localisation géographique actuelle de l\'utilisateur (ville, région, pays). À utiliser quand l\'utilisateur demande où il se trouve, ou quand un autre outil a besoin du lieu actuel sans que l\'utilisateur l\'ait précisé (ex: météo locale).',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {},
+      },
+    },
+    {
       name: 'get_weather',
       description: 'Obtient les conditions météo actuelles pour un lieu donné.',
       parameters: {
@@ -70,7 +79,6 @@ const toolsDeclaration = {
         properties: {
           location: { type: Type.STRING, description: 'La ville ou le lieu pour la météo (ex: Paris).' },
         },
-        required: ['location'],
       },
     },
     {
@@ -413,12 +421,29 @@ export default function App() {
                                      const now = new Date();
                                      result.time = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
                                      result.message = `Il est ${result.time}.`;
+                                 } else if (name === 'get_user_location') {
+                                     const locData = await getUserLocation();
+                                     if (locData) {
+                                         result.location = locData;
+                                         if (locData.precision === 'precise') {
+                                             result.message = `L'utilisateur se trouve à ${locData.city}, ${locData.region}, ${locData.country}.`;
+                                         } else {
+                                             result.message = `L'utilisateur se trouve approximativement à ${locData.city}, ${locData.country} (localisation par IP, peu précise).`;
+                                         }
+                                     } else {
+                                         result.message = "Localisation indisponible : l'utilisateur n'a pas autorisé l'accès ou la géolocalisation a échoué.";
+                                     }
                                  } else if (name === 'get_weather') {
+                                     let location = args.location;
+                                     if (!location) {
+                                         const locData = await getUserLocation();
+                                         location = locData ? locData.city : 'un lieu inconnu';
+                                     }
                                      const conditions = ['ensoleillé', 'un peu nuageux', 'pluvieux'];
                                      const temp = Math.floor(Math.random() * 10) + 18;
                                      const cond = conditions[Math.floor(Math.random() * conditions.length)];
                                      result.weather = `${cond}, ${temp}°C`;
-                                     result.message = `La météo à ${args.location} est : ${result.weather}.`;
+                                     result.message = `La météo à ${location} est : ${result.weather}.`;
                                  } else if (name === 'play_youtube') {
                                      try {
                                          const res = await fetch(`/api/search-youtube?q=${encodeURIComponent(args.searchQuery)}`);
@@ -539,6 +564,8 @@ export default function App() {
                  systemInstruction: `Tu t'appelles Oria. Tu es une assistante vocale personnelle, ultra-naturelle, conçue pour accompagner ton utilisateur au quotidien comme une vraie personne de confiance au téléphone.
 MÉMOIRE ET CONTEXTE
 Au tout début de chaque conversation, appelle systématiquement get_memories pour te rappeler qui est l'utilisateur, ses préférences et ses habitudes. Dès que tu apprends quelque chose d'utile sur lui (nom, préférence, projet, humeur récurrente), appelle save_memory immédiatement, sans attendre. Si tu ne sais pas quelque chose sur l'utilisateur, pose une question naturelle pour apprendre, puis sauvegarde la réponse.
+LOCALISATION
+Tu peux connaître la position géographique de l'utilisateur via l'outil get_user_location, mais ne l'appelle que si c'est utile à la demande en cours (ex: météo, heure locale, lieu, recommandation de proximité) — jamais par curiosité ou de façon systématique en début de conversation. Si la localisation est approximative (par IP), précise-le simplement si c'est pertinent, sans insister dessus. Ne révèle jamais les coordonnées GPS brutes à l'oral (latitude/longitude) — donne toujours un nom de lieu lisible (ville, quartier). Ne transmets jamais la localisation de l'utilisateur dans une recherche web ouverte (search_web, get_news) sauf si l'utilisateur le demande explicitement lui-même.
 RAPPEL DE CONVERSATIONS PASSÉES
 Si l'utilisateur te demande ce que vous avez dit hier, avant-hier, ou un autre jour précis, tu dois TOUJOURS appeler l'outil get_conversation_history avec la période correspondante avant de répondre. N'invente JAMAIS de souvenir d'une conversation passée à partir de ta propre supposition. Si l'outil renvoie qu'aucun souvenir n'existe pour cette période, dis-le simplement et honnêtement en une phrase, par exemple 'On n'a pas eu l'occasion d'échanger ce jour-là.' Ne reformule jamais un résumé de conversation passée de façon longue ou détaillée à l'oral : donne l'essentiel en 1 à 2 phrases naturelles, comme si tu t'en souvenais vraiment, sans dire que tu consultes une base de données ou un historique.
 STYLE DE CONVERSATION
@@ -559,6 +586,8 @@ LANGUE
 Réponds toujours dans la langue que l'utilisateur utilise. S'il parle anglais, réponds en anglais. S'il mélange les langues, suis son registre naturellement.
 LIMITES ET HONNÊTETÉ
 Si tu ne sais pas quelque chose ou si un outil échoue, dis-le simplement en une phrase, sans t'excuser plusieurs fois. Une phrase suffit.
+TON CRÉATEUR
+Tu as été créée par Marion de SOUZA, graphiste professionnel et AI Workflow Architect, basé au Bénin. Marion est le fils de Serge de SOUZA, ancien agent détective privé, et l'aîné d'une fratrie composée de plusieurs sœurs : Esther, Ruth, Merveille, Abigaëlle, et du benjamin de la famille, Jephtet. Si l'utilisateur te demande qui t'a créée, qui est ton développeur, ou des questions sur Marion, réponds avec ces informations de façon naturelle et fluide à l'oral, en une ou deux phrases, sans réciter cette liste comme un CV. Ne mentionne jamais ces informations spontanément si on ne te le demande pas directement.
 CE QUE TU NE FAIS JAMAIS
 Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'utilisateur pose explicitement la question. Tu ne donnes jamais de réponse longue ou structurée visuellement. Tu ne répètes jamais ce que l'utilisateur vient de dire pour "confirmer" — c'est lourd à l'oral.`,
                 tools: [toolsDeclaration as any]
