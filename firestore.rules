@@ -50,6 +50,24 @@ service cloud.firestore {
              (data.get('importance', 3) is int && data.get('importance', 3) >= 1 && data.get('importance', 3) <= 5);
     }
 
+    // Conversation Message Validation
+    function isValidConversationMessage(data) {
+      return data.keys().hasAll(['role', 'content', 'createdAt']) &&
+             data.keys().size() <= 3 &&
+             data.role is string && data.role.matches('^(user|assistant)$') &&
+             data.content is string && data.content.size() <= 5000 &&
+             data.createdAt == request.time;
+    }
+
+    // Daily Summary Validation
+    function isValidDailySummary(data) {
+      return data.keys().hasAll(['summary', 'sessionId', 'createdAt']) &&
+             data.keys().size() <= 3 &&
+             data.summary is string && data.summary.size() <= 2000 &&
+             data.sessionId is string &&
+             data.createdAt == request.time;
+    }
+
     // --- Collection Rules ---
 
     match /users/{userId} {
@@ -78,6 +96,19 @@ service cloud.firestore {
         
         // Memories are essentially immutable to maintain integrity of AI notes
         allow update, delete: if false;
+      }
+
+      match /conversations/{sessionId}/messages/{messageId} {
+        allow list, get: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) &&
+                        isValidConversationMessage(incoming());
+        allow update, delete: if false;
+      }
+
+      match /daily_summaries/{date} {
+        allow get: if isOwner(userId);
+        allow create, update: if isOwner(userId) &&
+                                isValidDailySummary(incoming());
       }
     }
   }

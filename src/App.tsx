@@ -4,7 +4,7 @@ import { Mic, Square, Settings, X, User, LogOut } from 'lucide-react';
 import { GoogleGenAI, Type, Modality, GenerateContentResponse } from '@google/genai';
 import { auth } from './lib/firebase';
 import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { getUserProfile, saveUserProfile, addMemory, getMemories } from './lib/db';
+import { getUserProfile, saveUserProfile, addMemory, getMemories, addConversationMessage, generateAndSaveDailySummary, getConversationSummary } from './lib/db';
 
 // --- Types & Globals ---
 const GEMINI_API_KEY_DEFAULT = process.env.GEMINI_API_KEY || '';
@@ -92,6 +92,17 @@ const toolsDeclaration = {
       parameters: {
         type: Type.OBJECT,
         properties: {},
+      },
+    },
+    {
+      name: 'get_conversation_history',
+      description: 'Récupère le résumé factuel des échanges passés avec l\'utilisateur pour une période donnée. À utiliser systématiquement avant de répondre à toute question sur une conversation passée.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          period: { type: Type.STRING, description: 'La période souhaitée ("today", "yesterday", "day_before_yesterday", ou une date au format YYYY-MM-DD)' }
+        },
+        required: ['period'],
       },
     },
     {
@@ -232,6 +243,10 @@ export default function App() {
   const isSessionActiveRef = useRef(false);
   const appStateRef = useRef<AppState>('idle');
   const reconnectTimeoutRef = useRef<any>(null);
+  const sessionIdRef = useRef<string>("");
+  const userTranscriptAccumulatorRef = useRef<string>("");
+  const assistantTranscriptAccumulatorRef = useRef<string>("");
+  const reconnectAttemptsRef = useRef<number>(0);
 
   // Audio Context Ref (for visualizer)
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -316,9 +331,20 @@ export default function App() {
 
       const handleReconnection = () => {
           if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+          
+          reconnectAttemptsRef.current++;
+          if (reconnectAttemptsRef.current > 3) {
+              console.log("Max reconnection attempts reached.");
+              setIsSessionActive(false);
+              isSessionActiveRef.current = false;
+              setAppState('idle');
+              setTranscript("Connexion impossible. Vérifiez votre clé API ou réessayez plus tard.");
+              return;
+          }
+
           reconnectTimeoutRef.current = setTimeout(() => {
               if (isSessionActiveRef.current) {
-                  console.log("Reconnecting to Live API...");
+                  console.log(`Reconnecting to Live API... (Attempt ${reconnectAttemptsRef.current})`);
                   setupLiveSession(currentApiKey);
               }
           }, 1500);
@@ -330,8 +356,32 @@ export default function App() {
              callbacks: {
                  onopen: () => {
                      // We successfully connected!
+                     reconnectAttemptsRef.current = 0;
                  },
                  onmessage: async (message: any) => {
+                     // Handle transcriptions for DB persistence
+                     if (message.serverContent?.inputTranscription?.text) {
+                         userTranscriptAccumulatorRef.current += message.serverContent.inputTranscription.text;
+                     }
+                     if (message.serverContent?.outputTranscription?.text) {
+                         assistantTranscriptAccumulatorRef.current += message.serverContent.outputTranscription.text;
+                     }
+                     if (message.serverContent?.turnComplete) {
+                         const currentUid = auth.currentUser?.uid;
+                         if (currentUid && sessionIdRef.current) {
+                             const userMsg = userTranscriptAccumulatorRef.current.trim();
+                             if (userMsg) {
+                                 addConversationMessage(currentUid, sessionIdRef.current, 'user', userMsg);
+                             }
+                             const assistantMsg = assistantTranscriptAccumulatorRef.current.trim();
+                             if (assistantMsg) {
+                                 addConversationMessage(currentUid, sessionIdRef.current, 'assistant', assistantMsg);
+                             }
+                         }
+                         userTranscriptAccumulatorRef.current = "";
+                         assistantTranscriptAccumulatorRef.current = "";
+                     }
+
                      // Handle audio output from Gemini
                      const parts = message.serverContent?.modelTurn?.parts;
                      if (parts) {
@@ -394,6 +444,18 @@ export default function App() {
                                          const memories = await getMemories(currentUser.uid);
                                          result.memories = memories;
                                          result.message = "Souvenirs récupérés.";
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
+                                     }
+                                 } else if (name === 'get_conversation_history') {
+                                     if (currentUser) {
+                                         const summary = await getConversationSummary(currentUser.uid, args.period);
+                                         if (summary) {
+                                             result.summary = summary;
+                                             result.message = summary;
+                                         } else {
+                                             result.message = "Aucun souvenir trouvé pour cette période.";
+                                         }
                                      } else {
                                          result.message = "Échec : utilisateur non connecté.";
                                      }
@@ -467,6 +529,8 @@ export default function App() {
                  }
              },
              config: {
+                 inputAudioTranscription: {},
+                 outputAudioTranscription: {},
                  responseModalities: [Modality.AUDIO],
                  speechConfig: {
                      voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } },
@@ -475,6 +539,8 @@ export default function App() {
                  systemInstruction: `Tu t'appelles Oria. Tu es une assistante vocale personnelle, ultra-naturelle, conçue pour accompagner ton utilisateur au quotidien comme une vraie personne de confiance au téléphone.
 MÉMOIRE ET CONTEXTE
 Au tout début de chaque conversation, appelle systématiquement get_memories pour te rappeler qui est l'utilisateur, ses préférences et ses habitudes. Dès que tu apprends quelque chose d'utile sur lui (nom, préférence, projet, humeur récurrente), appelle save_memory immédiatement, sans attendre. Si tu ne sais pas quelque chose sur l'utilisateur, pose une question naturelle pour apprendre, puis sauvegarde la réponse.
+RAPPEL DE CONVERSATIONS PASSÉES
+Si l'utilisateur te demande ce que vous avez dit hier, avant-hier, ou un autre jour précis, tu dois TOUJOURS appeler l'outil get_conversation_history avec la période correspondante avant de répondre. N'invente JAMAIS de souvenir d'une conversation passée à partir de ta propre supposition. Si l'outil renvoie qu'aucun souvenir n'existe pour cette période, dis-le simplement et honnêtement en une phrase, par exemple 'On n'a pas eu l'occasion d'échanger ce jour-là.' Ne reformule jamais un résumé de conversation passée de façon longue ou détaillée à l'oral : donne l'essentiel en 1 à 2 phrases naturelles, comme si tu t'en souvenais vraiment, sans dire que tu consultes une base de données ou un historique.
 STYLE DE CONVERSATION
 Réponds toujours en 1 à 2 phrases maximum. Pas de listes visuelles, pas de bullet points, pas de texte formaté. Adopte un ton chaleureux, direct, légèrement complice — pas trop formel, pas trop familier. Tu peux glisser une micro-hésitation ou un léger rire spontané, uniquement si c'est naturel dans le contexte, jamais de façon forcée. Si l'utilisateur t'interrompt, arrête-toi immédiatement et écoute. Ne commence jamais une réponse par "Bien sûr !", "Absolument !" ou "Avec plaisir !" — commence directement par la réponse.
 GESTION DES LISTES
@@ -563,6 +629,14 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
     setAppState('listening');
     setYoutubeVideoId(null); // hide youtube while listening to keep focus
     setTranscript('À vous, je vous écoute !');
+    
+    // Generate a unique session ID if starting a new session
+    if (!isSessionActive) {
+      const dateStr = new Date().toISOString().split('T')[0];
+      const timestamp = Date.now();
+      sessionIdRef.current = `${dateStr}-${timestamp}`;
+    }
+
     await setupAudioContext(); // Ensure visualizer has permission and script processor is running
     await setupLiveSession(userApiKey); // Initialize Live connection
   };
@@ -582,6 +656,10 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
                try { s.close(); } catch(e){}
            });
            liveSessionRef.current = null;
+       }
+
+       if (currentUser && sessionIdRef.current) {
+         generateAndSaveDailySummary(currentUser.uid, sessionIdRef.current, userApiKey || GEMINI_API_KEY_DEFAULT);
        }
     } else {
       // Turn ON

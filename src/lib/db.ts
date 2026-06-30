@@ -5,12 +5,13 @@ import {
   setDoc, 
   addDoc, 
   query, 
-  where, 
+  orderBy,
   getDocs, 
   serverTimestamp,
   type FieldValue
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
+import { GoogleGenAI } from '@google/genai';
 
 export enum OperationType {
   CREATE = 'create',
@@ -83,6 +84,19 @@ export async function addMemory(userId: string, content: string, category: strin
   }
 }
 
+export async function addConversationMessage(userId: string, sessionId: string, role: 'user' | 'assistant', content: string) {
+  const path = `users/${userId}/conversations/${sessionId}/messages`;
+  try {
+    await addDoc(collection(db, path), {
+      role,
+      content,
+      createdAt: serverTimestamp()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
+}
+
 export async function getMemories(userId: string) {
   const path = `users/${userId}/memories`;
   try {
@@ -91,5 +105,78 @@ export async function getMemories(userId: string) {
     return snap.docs.map(d => d.data());
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, path);
+  }
+}
+
+export async function generateAndSaveDailySummary(userId: string, sessionId: string, apiKey: string) {
+  const messagesPath = `users/${userId}/conversations/${sessionId}/messages`;
+  try {
+    const q = query(collection(db, messagesPath), orderBy('createdAt', 'asc'));
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) return;
+    
+    const conversationText = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return `${data.role}: ${data.content}`;
+    }).join('\n');
+
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `Résume factuellement cette conversation en 3 à 5 phrases courtes, en français, sans interprétation ni ajout d'informations qui n'y figurent pas explicitement, en citant les faits concrets (sujets abordés, décisions, infos personnelles mentionnées, tâches à faire) :\n\n${conversationText}`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash',
+      contents: prompt,
+    });
+    
+    const summary = response.text;
+    if (!summary) return;
+
+    let date = new Date().toISOString().split('T')[0];
+    const dateMatch = sessionId.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (dateMatch) {
+        date = dateMatch[1];
+    }
+
+    const summaryPath = `users/${userId}/daily_summaries/${date}`;
+    await setDoc(doc(db, summaryPath), {
+      summary,
+      sessionId,
+      createdAt: serverTimestamp()
+    }, { merge: true });
+
+  } catch (error) {
+    console.error("Error generating daily summary:", error);
+    // Let it fail silently to avoid breaking the UI flow
+  }
+}
+
+export async function getConversationSummary(userId: string, period: string) {
+  let targetDateStr = period;
+
+  const today = new Date();
+  
+  if (period === 'today') {
+    targetDateStr = today.toISOString().split('T')[0];
+  } else if (period === 'yesterday') {
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    targetDateStr = yesterday.toISOString().split('T')[0];
+  } else if (period === 'day_before_yesterday') {
+    const dayBeforeYesterday = new Date(today);
+    dayBeforeYesterday.setDate(today.getDate() - 2);
+    targetDateStr = dayBeforeYesterday.toISOString().split('T')[0];
+  }
+
+  const path = `users/${userId}/daily_summaries/${targetDateStr}`;
+  try {
+    const snap = await getDoc(doc(db, path));
+    if (snap.exists()) {
+      return snap.data().summary as string;
+    }
+    return null;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
   }
 }
