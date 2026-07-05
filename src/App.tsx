@@ -976,7 +976,7 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
   };
 
   return (
-    <div className="relative min-h-screen bg-black flex flex-col items-center justify-center font-sans text-neutral-100 overflow-hidden">
+    <div className="relative h-[100dvh] w-full bg-black flex flex-col items-center justify-center font-sans text-neutral-100 overflow-hidden">
       <div 
         className="absolute w-[60vw] h-[60vw] rounded-full blur-[120px] opacity-10 pointer-events-none transition-all duration-1000 ease-in-out"
         style={{
@@ -985,86 +985,124 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
         }}
       />
 
-      <div className="absolute top-0 left-0 w-full z-50 p-8">
-        <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-               <motion.img 
-                 initial={{ opacity: 0, scale: 0.5 }}
-                 animate={{ opacity: 1, scale: 1 }}
-                 src="https://image.noelshack.com/fichiers/2026/20/3/1778684004-oria.png" 
-                 alt="Oria Logo" 
-                 className="h-10 w-auto object-contain"
-                 referrerPolicy="no-referrer"
-               />
-            </div>
-          
-          <div className="flex items-center gap-3">
-             <button 
-               onClick={() => setShowSettings(true)}
-               className="p-2.5 text-neutral-500 hover:text-white bg-white/[0.03] hover:bg-white/[0.08] backdrop-blur-md rounded-full border border-white/5 transition-all"
-             >
-               <Settings size={16} />
-             </button>
+      <header className="absolute top-0 left-0 w-full z-50 px-4 py-3 sm:px-6 sm:py-4 lg:px-8 lg:py-5">
 
-             {currentUser ? (
-               <div className="flex items-center gap-2">
-                 {(!gmailTokenRef.current || gmailError) && (
-                   <motion.button
-                     initial={{ opacity: 0, scale: 0.8 }}
-                     animate={{ opacity: 1, scale: 1 }}
-                     onClick={handleLogin}
-                     className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-full text-[10px] font-medium hover:bg-amber-500/20 transition-all mr-1"
-                   >
-                     <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
-                     Sync Gmail
-                   </motion.button>
-                 )}
-                 <motion.div 
-                   initial={{ opacity: 0, x: 20 }}
-                   animate={{ opacity: 1, x: 0 }}
-                   className="flex items-center bg-white/[0.03] backdrop-blur-xl p-1 rounded-full border border-white/10"
-                 >
-                   {currentUser.photoURL ? (
-                     <img src={currentUser.photoURL} alt="" className="w-8 h-8 rounded-full border border-white/10 object-cover" />
-                   ) : (
-                     <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center border border-white/10">
-                       <User size={14} className="text-neutral-400" />
-                     </div>
-                   )}
-                 </motion.div>
-                 
-                 <motion.button 
-                   initial={{ opacity: 0 }}
-                   animate={{ opacity: 1 }}
-                   onClick={handleLogout}
-                   className="p-2.5 text-neutral-500 hover:text-red-400 bg-white/[0.03] hover:bg-white/[0.08] backdrop-blur-md rounded-full border border-white/5 transition-all"
-                   title="Déconnexion"
-                 >
-                   <LogOut size={16} />
-                 </motion.button>
-               </div>
-             ) : (
-               <motion.button 
-                 initial={{ opacity: 0 }}
-                 animate={{ opacity: 1 }}
-                 whileHover={{ scale: 1.02 }}
-                 whileTap={{ scale: 0.98 }}
-                 onClick={handleLogin}
-                 className="flex items-center gap-2.5 bg-white/[0.05] hover:bg-white/[0.1] backdrop-blur-md text-white border border-white/10 px-5 py-2.5 rounded-full text-[11px] font-medium transition-all shadow-2xl"
-               >
-                 <div className="w-4 h-4 bg-white rounded-full flex items-center justify-center">
-                    <User size={10} className="text-black" />
-                 </div>
-                 Se connecter avec Google
-               </motion.button>
-             )}
+        {/* ── MOBILE / TABLET (hidden sur lg+) ── */}
+        <div className="flex items-center justify-between lg:hidden">
+          {/* Hamburger */}
+          <button
+            onClick={() => setShowDrawer(true)}
+            className="flex flex-col gap-[5px] p-2 rounded-xl hover:bg-white/5 transition-all"
+          >
+            <span className="block w-5 h-[2px] bg-white/70 rounded-full" />
+            <span className="block w-5 h-[2px] bg-white/70 rounded-full" />
+            <span className="block w-5 h-[2px] bg-white/70 rounded-full" />
+          </button>
+
+          {/* Logo centré */}
+          <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
+            <img
+              src="https://image.noelshack.com/fichiers/2026/27/7/1783286862-icon-oria.png"
+              alt="Oria"
+              className="h-7 w-auto object-contain"
+              referrerPolicy="no-referrer"
+            />
+            <span className="text-white font-semibold text-base tracking-wide">Oria</span>
+          </div>
+
+          {/* Indicateur Live */}
+          {isSessionActive ? (
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+              <span className="text-[10px] font-semibold text-red-400 uppercase tracking-widest">Live</span>
+            </div>
+          ) : (
+            <div className="w-8" />
+          )}
+        </div>
+
+        {/* ── DESKTOP (hidden sous lg) ── */}
+        <div className="hidden lg:flex items-center justify-between">
+          {/* Logo gauche */}
+          <div className="flex items-center gap-2">
+            <motion.img
+              initial={{ opacity: 0, scale: 0.5 }}
+              animate={{ opacity: 1, scale: 1 }}
+              src="https://image.noelshack.com/fichiers/2026/27/7/1783286862-icon-oria.png"
+              alt="Oria Logo"
+              className="h-10 w-auto object-contain"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+
+          {/* Droite : settings + compte */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowSettings(true)}
+              className="p-2.5 text-neutral-500 hover:text-white bg-white/[0.03] hover:bg-white/[0.08] backdrop-blur-md rounded-full border border-white/5 transition-all"
+            >
+              <Settings size={16} />
+            </button>
+
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                {(!gmailTokenRef.current || gmailError) && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    onClick={handleLogin}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-full text-[10px] font-medium hover:bg-amber-500/20 transition-all mr-1"
+                  >
+                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                    Sync Gmail
+                  </motion.button>
+                )}
+                <motion.div
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="flex items-center bg-white/[0.03] backdrop-blur-xl p-1 rounded-full border border-white/10"
+                >
+                  {currentUser.photoURL ? (
+                    <img src={currentUser.photoURL} alt="" className="w-8 h-8 rounded-full border border-white/10 object-cover" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center border border-white/10">
+                      <User size={14} className="text-neutral-400" />
+                    </div>
+                  )}
+                </motion.div>
+                <motion.button
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  onClick={handleLogout}
+                  className="p-2.5 text-neutral-500 hover:text-red-400 bg-white/[0.03] hover:bg-white/[0.08] backdrop-blur-md rounded-full border border-white/5 transition-all"
+                  title="Déconnexion"
+                >
+                  <LogOut size={16} />
+                </motion.button>
+              </div>
+            ) : (
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleLogin}
+                className="flex items-center gap-2.5 bg-white/[0.05] hover:bg-white/[0.1] backdrop-blur-md text-white border border-white/10 px-5 py-2.5 rounded-full text-[11px] font-medium transition-all shadow-2xl"
+              >
+                <div className="w-4 h-4 bg-white rounded-full flex items-center justify-center">
+                  <User size={10} className="text-black" />
+                </div>
+                Se connecter avec Google
+              </motion.button>
+            )}
           </div>
         </div>
-      </div>
 
-      <main className="z-10 w-full max-w-4xl flex flex-col items-center p-8 gap-16">
+      </header>
+
+      <main className="z-10 w-full max-w-4xl flex flex-col items-center px-4 py-4 gap-8 lg:p-8 lg:gap-16">
         
-        <div className="h-48 w-full flex items-center justify-center gap-2 mx-auto">
+        <div className="h-28 w-full flex items-center justify-center gap-1 mx-auto sm:h-36 lg:h-48 lg:gap-2">
            {barHeights.map((h, i) => {
               const mid = Math.floor(BARS_COUNT / 2);
               const dist = Math.abs(i - mid);
@@ -1076,7 +1114,7 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
                    key={i}
                    animate={{ height: finalHeight }}
                    transition={{ type: 'tween', duration: 0.05, ease: 'linear' }}
-                   className="w-4 rounded-full bg-white relative shadow-2xl"
+                   className="w-2 rounded-full bg-white relative shadow-2xl lg:w-4"
                    style={{
                       boxShadow: `0 0 15px ${getGlowColor()}, inset 0 0 5px rgba(255,255,255,1)`,
                       opacity: appState === 'idle' ? 0.3 : 0.9 + (finalHeight / 120) * 0.1
@@ -1086,12 +1124,12 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
            })}
         </div>
 
-        <div className="min-h-[100px] flex items-center justify-center text-center">
+        <div className="min-h-[60px] w-full flex items-center justify-center text-center px-4 lg:min-h-[100px] lg:px-0">
            <motion.p 
               key={transcript}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`text-2xl sm:text-3xl font-medium tracking-tight mt-12 max-w-2xl leading-relaxed ${appState !== 'idle' ? 'text-white' : 'text-neutral-500'}`}
+              className={`text-lg font-medium tracking-tight max-w-2xl leading-relaxed lg:text-3xl lg:mt-12 ${appState !== 'idle' ? 'text-white' : 'text-neutral-500'}`}
            >
              {transcript}
            </motion.p>
@@ -1103,11 +1141,11 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
         <motion.div 
            initial={{ opacity: 0, y: 20, scale: 0.9 }}
            animate={{ opacity: 1, y: 0, scale: 1 }}
-           className="absolute bottom-8 left-8 z-40 w-full max-w-[400px] aspect-video rounded-xl overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8)] border border-neutral-700/50 group"
+           className="absolute bottom-24 left-3 right-3 z-40 aspect-video rounded-xl overflow-hidden shadow-[0_20px_50px_-12px_rgba(0,0,0,0.8)] border border-neutral-700/50 group lg:bottom-8 lg:left-8 lg:right-auto lg:w-full lg:max-w-[400px]"
         >
            <button
              onClick={() => setYoutubeVideoId(null)}
-             className="absolute top-2 right-2 bg-black/60 hover:bg-black/90 text-white rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-50 backdrop-blur-md"
+             className="absolute top-2 right-2 bg-black/60 hover:bg-black/90 text-white rounded-full p-1.5 opacity-100 transition-opacity z-50 backdrop-blur-md lg:opacity-0 lg:group-hover:opacity-100"
            >
              <X size={16} />
            </button>
@@ -1121,13 +1159,13 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
         </motion.div>
       )}
 
-      <div className="absolute bottom-8 right-8 flex items-center gap-4 z-50">
+      <div className="absolute bottom-5 right-4 flex items-center gap-2 z-50 lg:bottom-8 lg:right-8 lg:gap-4">
         {isSessionActive && (
            <>
              {!isVideoActive ? (
                 <div className="flex items-center gap-2 mr-2">
-                  <button onClick={() => startVideoCapture('camera')} className="h-10 px-4 rounded-full bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition-all text-[11px] font-medium border border-neutral-700">Caméra</button>
-                  <button onClick={() => startVideoCapture('screen')} className="h-10 px-4 rounded-full bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition-all text-[11px] font-medium border border-neutral-700">Écran</button>
+                  <button onClick={() => startVideoCapture('camera')} className="h-8 px-3 rounded-full bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition-all text-[10px] font-medium border border-neutral-700 lg:h-10 lg:px-4 lg:text-[11px]">Caméra</button>
+                  <button onClick={() => startVideoCapture('screen')} className="h-8 px-3 rounded-full bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition-all text-[10px] font-medium border border-neutral-700 lg:h-10 lg:px-4 lg:text-[11px]">Écran</button>
                 </div>
              ) : (
                 <button onClick={stopVideoCapture} className="h-10 px-4 mr-2 rounded-full bg-red-900/40 text-red-400 hover:bg-red-900/60 transition-all text-[11px] font-medium border border-red-900/50">
@@ -1139,7 +1177,7 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
         )}
         <button
           onClick={toggleSession}
-          className={`h-16 w-16 flex items-center justify-center rounded-full transition-all duration-300 ring-2 ring-offset-4 ring-offset-neutral-950 ${
+          className={`h-14 w-14 flex items-center justify-center rounded-full transition-all duration-300 ring-2 ring-offset-4 ring-offset-black lg:h-16 lg:w-16 ${
              isSessionActive ? 'bg-white ring-white text-black drop-shadow-[0_0_20px_rgba(255,255,255,0.5)]' :
              'bg-neutral-900 ring-neutral-800 text-neutral-400 hover:ring-neutral-600'
           }`}
@@ -1153,7 +1191,7 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
       {/* Small PIP for active video capture */}
       <video 
         ref={hiddenVideoRef} 
-        className={`absolute top-24 left-8 z-40 w-48 aspect-video rounded-xl overflow-hidden shadow-2xl border border-neutral-700/50 bg-black transition-all duration-300 ${isVideoActive ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`} 
+        className={`absolute top-16 left-3 z-40 w-32 aspect-video rounded-xl overflow-hidden shadow-2xl border border-neutral-700/50 bg-black transition-all duration-300 lg:top-24 lg:left-8 lg:w-48 ${isVideoActive ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`} 
         style={{ objectFit: 'cover' }}
         playsInline 
         muted 
