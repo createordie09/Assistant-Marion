@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Mic, Square, Settings, X, User, LogOut } from 'lucide-react';
 import { GoogleGenAI, Type, Modality, GenerateContentResponse } from '@google/genai';
 import { auth } from './lib/firebase';
@@ -178,6 +178,7 @@ export default function App() {
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
   const [voiceName, setVoiceName] = useState('Kore');
   const [userApiKey, setUserApiKey] = useState(() => localStorage.getItem('userApiKey') || '');
   const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
@@ -1002,12 +1003,11 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
           {/* Logo centré */}
           <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2">
             <img
-              src="https://image.noelshack.com/fichiers/2026/27/7/1783286862-icon-oria.png"
+              src="https://image.noelshack.com/fichiers/2026/20/3/1778684004-oria.png"
               alt="Oria"
               className="h-7 w-auto object-contain"
               referrerPolicy="no-referrer"
             />
-            <span className="text-white font-semibold text-base tracking-wide">Oria</span>
           </div>
 
           {/* Indicateur Live */}
@@ -1028,7 +1028,7 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
             <motion.img
               initial={{ opacity: 0, scale: 0.5 }}
               animate={{ opacity: 1, scale: 1 }}
-              src="https://image.noelshack.com/fichiers/2026/27/7/1783286862-icon-oria.png"
+              src="https://image.noelshack.com/fichiers/2026/20/3/1778684004-oria.png"
               alt="Oria Logo"
               className="h-10 w-auto object-contain"
               referrerPolicy="no-referrer"
@@ -1197,6 +1197,92 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
         muted 
       />
       <canvas ref={hiddenCanvasRef} className="hidden" />
+
+      <AnimatePresence>
+        {showDrawer && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDrawer(false)}
+              className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm lg:hidden"
+            />
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', bounce: 0, duration: 0.4 }}
+              className="absolute top-0 left-0 bottom-0 w-64 bg-neutral-900 border-r border-neutral-800 z-50 flex flex-col p-6 lg:hidden shadow-2xl"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-2">
+                  <img
+                    src="https://image.noelshack.com/fichiers/2026/20/3/1778684004-oria.png"
+                    alt="Oria"
+                    className="h-6 w-auto object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <button onClick={() => setShowDrawer(false)} className="text-neutral-500 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <button
+                  onClick={() => {
+                    setShowDrawer(false);
+                    setShowSettings(true);
+                  }}
+                  className="flex items-center gap-3 text-sm font-medium text-neutral-400 hover:text-white transition-colors"
+                >
+                  <Settings size={18} />
+                  Paramètres
+                </button>
+
+                {currentUser ? (
+                  <>
+                    {(!gmailTokenRef.current || gmailError) && (
+                      <button
+                        onClick={() => {
+                          setShowDrawer(false);
+                          handleLogin();
+                        }}
+                        className="flex items-center gap-3 text-sm font-medium text-amber-500 hover:text-amber-400 transition-colors"
+                      >
+                        <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                        Synchroniser Gmail
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setShowDrawer(false);
+                        handleLogout();
+                      }}
+                      className="flex items-center gap-3 text-sm font-medium text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      <LogOut size={18} />
+                      Déconnexion
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setShowDrawer(false);
+                      handleLogin();
+                    }}
+                    className="flex items-center gap-3 text-sm font-medium text-neutral-400 hover:text-white transition-colors"
+                  >
+                    <User size={18} />
+                    Se connecter
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {showSettings && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
