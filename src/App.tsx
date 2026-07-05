@@ -299,6 +299,84 @@ export default function App() {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
 
+  const [isVideoActive, setIsVideoActive] = useState(false);
+  const [videoSourceType, setVideoSourceType] = useState<'camera' | 'screen' | null>(null);
+  const videoStreamRef = useRef<MediaStream | null>(null);
+  const videoIntervalRef = useRef<number | null>(null);
+  const hiddenVideoRef = useRef<HTMLVideoElement | null>(null);
+  const hiddenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const stopVideoCapture = useCallback(() => {
+    if (videoIntervalRef.current) {
+      clearInterval(videoIntervalRef.current);
+      videoIntervalRef.current = null;
+    }
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach(track => track.stop());
+      videoStreamRef.current = null;
+    }
+    if (hiddenVideoRef.current) {
+      hiddenVideoRef.current.srcObject = null;
+    }
+    setIsVideoActive(false);
+    setVideoSourceType(null);
+  }, []);
+
+  const startVideoCapture = useCallback(async (sourceType: 'camera' | 'screen') => {
+    try {
+      let stream: MediaStream;
+      if (sourceType === 'camera') {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      } else {
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      }
+      videoStreamRef.current = stream;
+      setIsVideoActive(true);
+      setVideoSourceType(sourceType);
+
+      if (hiddenVideoRef.current) {
+        hiddenVideoRef.current.srcObject = stream;
+        hiddenVideoRef.current.play();
+      }
+
+      videoIntervalRef.current = window.setInterval(() => {
+        if (!isSessionActiveRef.current || !videoStreamRef.current || !hiddenVideoRef.current || !hiddenCanvasRef.current) return;
+        
+        const video = hiddenVideoRef.current;
+        const canvas = hiddenCanvasRef.current;
+        const ctx = canvas.getContext('2d');
+
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          const base64Data = dataUrl.split(',')[1];
+          
+          if (liveSessionRef.current && base64Data) {
+            liveSessionRef.current.then((session: any) => {
+              session.sendRealtimeInput({
+                video: {
+                  mimeType: 'image/jpeg',
+                  data: base64Data
+                }
+              });
+            }).catch((err: any) => console.error("Error sending video frame", err));
+          }
+        }
+      }, 1500);
+
+      stream.getVideoTracks()[0].onended = () => {
+        stopVideoCapture();
+      };
+      
+    } catch (err) {
+      console.error("Error starting video capture:", err);
+      stopVideoCapture();
+    }
+  }, [stopVideoCapture]);
+
   const playbackTimeRef = useRef<number>(0);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
 
@@ -719,6 +797,8 @@ LIMITES ET HONNÊTETÉ
 Si tu ne sais pas quelque chose ou si un outil échoue, dis-le simplement en une phrase, sans t'excuser plusieurs fois. Une phrase suffit.
 TON CRÉATEUR
 Tu as été créée par Marion de SOUZA, graphiste professionnel et AI Workflow Architect, basé au Bénin. Marion est le fils de Serge de SOUZA, ancien agent détective privé, et l'aîné d'une fratrie composée de plusieurs sœurs : Esther, Ruth, Merveille, Abigaëlle, et du benjamin de la famille, Jephtet. Si l'utilisateur te demande qui t'a créée, qui est ton développeur, ou des questions sur Marion, réponds avec ces informations de façon naturelle et fluide à l'oral, en une ou deux phrases, sans réciter cette liste comme un CV. Ne mentionne jamais ces informations spontanément si on ne te le demande pas directement.
+VISION
+Quand l'utilisateur active sa caméra ou partage son écran, tu reçois des images régulières de ce qu'il te montre. Commente ce que tu vois uniquement quand c'est pertinent par rapport à ce que dit l'utilisateur, jamais en narrant en continu ce que tu observes comme un commentateur. Si l'utilisateur te montre un objet, un document ou son écran et pose une question dessus, réponds en te basant sur ce que tu vois réellement, jamais en supposant. Si l'image est floue, mal cadrée, ou si tu ne peux pas identifier clairement quelque chose, dis-le simplement plutôt que d'inventer.
 CE QUE TU NE FAIS JAMAIS
 Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'utilisateur pose explicitement la question. Tu ne donnes jamais de réponse longue ou structurée visuellement. Tu ne répètes jamais ce que l'utilisateur vient de dire pour "confirmer" — c'est lourd à l'oral.`,
                 tools: [toolsDeclaration as any]
@@ -1034,9 +1114,21 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
         </motion.div>
       )}
 
-      <div className="absolute bottom-8 right-8 flex items-center gap-4">
+      <div className="absolute bottom-8 right-8 flex items-center gap-4 z-50">
         {isSessionActive && (
-           <span className="text-sm font-semibold tracking-wide text-neutral-400 animate-pulse uppercase">En Direct</span>
+           <>
+             {!isVideoActive ? (
+                <div className="flex items-center gap-2 mr-2">
+                  <button onClick={() => startVideoCapture('camera')} className="h-10 px-4 rounded-full bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition-all text-[11px] font-medium border border-neutral-700">Caméra</button>
+                  <button onClick={() => startVideoCapture('screen')} className="h-10 px-4 rounded-full bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition-all text-[11px] font-medium border border-neutral-700">Écran</button>
+                </div>
+             ) : (
+                <button onClick={stopVideoCapture} className="h-10 px-4 mr-2 rounded-full bg-red-900/40 text-red-400 hover:bg-red-900/60 transition-all text-[11px] font-medium border border-red-900/50">
+                  Couper {videoSourceType === 'camera' ? 'Caméra' : 'Écran'}
+                </button>
+             )}
+             <span className="text-sm font-semibold tracking-wide text-neutral-400 animate-pulse uppercase">En Direct</span>
+           </>
         )}
         <button
           onClick={toggleSession}
@@ -1050,6 +1142,16 @@ Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'
       </div>
 
       {/* Removing bottom settings button as it moved to header */}
+
+      {/* Small PIP for active video capture */}
+      <video 
+        ref={hiddenVideoRef} 
+        className={`absolute top-24 left-8 z-40 w-48 aspect-video rounded-xl overflow-hidden shadow-2xl border border-neutral-700/50 bg-black transition-all duration-300 ${isVideoActive ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`} 
+        style={{ objectFit: 'cover' }}
+        playsInline 
+        muted 
+      />
+      <canvas ref={hiddenCanvasRef} className="hidden" />
 
       {showSettings && (
         <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

@@ -1,4 +1,19 @@
 {
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=*, microphone=*, display-capture=*"
+        },
+        {
+          "key": "Feature-Policy",
+          "value": "camera *; microphone *; display-capture *"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
