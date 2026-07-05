@@ -309,12 +309,15 @@ export async function getProjects(userId: string) {
   const path = `users/${userId}/projects`;
   try {
     const projectsRef = collection(db, path);
-    const q = query(projectsRef, where('status', '!=', 'terminé'), orderBy('status'), orderBy('updatedAt', 'desc'));
+    const q = query(projectsRef, orderBy('updatedAt', 'desc'));
     const querySnapshot = await getDocs(q);
     
     const projects: any[] = [];
     querySnapshot.forEach((doc) => {
-      projects.push({ id: doc.id, ...doc.data() });
+      const data = doc.data();
+      if (data.status !== 'terminé') {
+        projects.push({ id: doc.id, ...data });
+      }
     });
     return projects;
   } catch (error) {

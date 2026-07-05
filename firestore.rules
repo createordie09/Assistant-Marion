@@ -55,6 +55,26 @@ service cloud.firestore {
              data.createdAt == request.time;
     }
 
+    // Note Validation
+    function isValidNote(data) {
+      return data.keys().hasAll(['content', 'tags', 'createdAt']) &&
+             data.keys().size() <= 3 &&
+             data.content is string && data.content.size() <= 10000 &&
+             data.tags is list && data.tags.size() <= 20 &&
+             data.createdAt == request.time;
+    }
+
+    // Project Validation
+    function isValidProject(data) {
+      return data.keys().hasAll(['name', 'status', 'lastAction', 'updatedAt']) &&
+             data.keys().size() <= 5 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.status is string && data.status.matches('^(en cours|en pause|terminé)$') &&
+             data.lastAction is string && data.lastAction.size() <= 1000 &&
+             (!data.keys().hasAny(['nextSteps']) || (data.nextSteps is string && data.nextSteps.size() <= 1000)) &&
+             data.updatedAt == request.time;
+    }
+
     // Daily Summary Validation
     function isValidDailySummary(data) {
       return data.keys().hasAll(['summary', 'sessionId', 'createdAt']) &&
@@ -82,13 +102,15 @@ service cloud.firestore {
                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'interests', 'updatedAt']);
 
       match /notes/{noteId} {
-        allow read, create: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidNote(incoming());
         allow delete: if isOwner(userId);
         allow update: if false;
       }
 
       match /projects/{projectId} {
-        allow read, create, update: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidId(userId) && isValidProject(incoming());
         allow delete: if false;
       }
 
