@@ -5,9 +5,11 @@ import {
   setDoc, 
   addDoc, 
   updateDoc,
+  deleteDoc,
   query, 
   orderBy,
   where,
+  limit,
   getDocs, 
   serverTimestamp,
   type FieldValue
@@ -234,5 +236,110 @@ export async function completeReminder(userId: string, reminderId: string) {
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
     throw error;
+  }
+}
+
+export async function createNote(userId: string, content: string, tags?: string[]) {
+  const path = `users/${userId}/notes`;
+  try {
+    const docRef = await addDoc(collection(db, path), {
+      content,
+      tags: tags || [],
+      createdAt: serverTimestamp()
+    });
+    return docRef.id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+    throw error;
+  }
+}
+
+export async function getNotes(userId: string, searchQuery?: string) {
+  const path = `users/${userId}/notes`;
+  try {
+    const notesRef = collection(db, path);
+    const q = query(notesRef, orderBy('createdAt', 'desc'), limit(20));
+    const querySnapshot = await getDocs(q);
+    
+    let notes: any[] = [];
+    querySnapshot.forEach((doc) => {
+      notes.push({ noteId: doc.id, ...doc.data() });
+    });
+    
+    if (searchQuery) {
+      const sq = searchQuery.toLowerCase();
+      notes = notes.filter(n => typeof n.content === 'string' && n.content.toLowerCase().includes(sq));
+    }
+    
+    return notes;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+}
+
+export async function deleteNote(userId: string, noteId: string) {
+  const path = `users/${userId}/notes/${noteId}`;
+  try {
+    await deleteDoc(doc(db, path));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+    throw error;
+  }
+}
+
+export async function saveProject(userId: string, name: string, status: string, lastAction: string, nextSteps?: string) {
+  const slug = name.toLowerCase().replace(/\s+/g, '-');
+  const path = `users/${userId}/projects/${slug}`;
+  try {
+    await setDoc(doc(db, path), {
+      name,
+      status,
+      lastAction,
+      ...(nextSteps ? { nextSteps } : {}),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+export async function getProjects(userId: string) {
+  const path = `users/${userId}/projects`;
+  try {
+    const projectsRef = collection(db, path);
+    const q = query(projectsRef, where('status', '!=', 'terminé'), orderBy('status'), orderBy('updatedAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    
+    const projects: any[] = [];
+    querySnapshot.forEach((doc) => {
+      projects.push({ id: doc.id, ...doc.data() });
+    });
+    return projects;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
+}
+
+export async function getProject(userId: string, name: string) {
+  const path = `users/${userId}/projects`;
+  try {
+    const projectsRef = collection(db, path);
+    const querySnapshot = await getDocs(projectsRef);
+    const searchName = name.toLowerCase();
+    
+    let project = null;
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.name && data.name.toLowerCase() === searchName) {
+        project = { id: doc.id, ...data };
+      }
+    });
+    return project;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    return null;
   }
 }

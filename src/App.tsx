@@ -4,7 +4,7 @@ import { Mic, Square, Settings, X, User, LogOut } from 'lucide-react';
 import { GoogleGenAI, Type, Modality, GenerateContentResponse } from '@google/genai';
 import { auth } from './lib/firebase';
 import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
-import { getUserProfile, saveUserProfile, addMemory, getMemories, addConversationMessage, generateAndSaveDailySummary, getConversationSummary, createReminder, getDueReminders, completeReminder } from './lib/db';
+import { getUserProfile, saveUserProfile, addMemory, getMemories, addConversationMessage, generateAndSaveDailySummary, getConversationSummary, createReminder, getDueReminders, completeReminder, createNote, getNotes, deleteNote, saveProject, getProjects } from './lib/db';
 import { getUserLocation } from './lib/geolocation';
 
 // --- Types & Globals ---
@@ -164,10 +164,64 @@ const toolsDeclaration = {
         type: Type.OBJECT,
         properties: {},
       },
+    },
+    {
+      name: 'create_note',
+      description: 'Sauvegarde une note vocale de l\'utilisateur pour référence future.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          content: { type: Type.STRING, description: 'Le texte de la note.' },
+          tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'Mots-clés associés (optionnel).' }
+        },
+        required: ['content']
+      }
+    },
+    {
+      name: 'get_notes',
+      description: 'Récupère les notes vocales sauvegardées par l\'utilisateur, avec recherche optionnelle par mot-clé.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          query: { type: Type.STRING, description: 'Mot-clé de recherche (optionnel).' }
+        }
+      }
+    },
+    {
+      name: 'delete_note',
+      description: 'Supprime une note vocale spécifique.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          noteId: { type: Type.STRING, description: 'L\'ID de la note à supprimer.' }
+        },
+        required: ['noteId']
+      }
+    },
+    {
+      name: 'save_project',
+      description: 'Sauvegarde ou met à jour un projet en cours avec son statut et avancement.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING, description: 'Nom du projet.' },
+          status: { type: Type.STRING, description: 'Statut: en cours, en pause, ou terminé.' },
+          lastAction: { type: Type.STRING, description: 'Dernière action effectuée.' },
+          nextSteps: { type: Type.STRING, description: 'Prochaines étapes (optionnel).' }
+        },
+        required: ['name', 'status', 'lastAction']
+      }
+    },
+    {
+      name: 'get_projects',
+      description: 'Récupère tous les projets actifs en cours de l\'utilisateur.',
+      parameters: {
+        type: Type.OBJECT,
+        properties: {}
+      }
     }
   ],
 };
-
 // --- Utils ---
 const BARS_COUNT = 9;
 const getInitialBars = () => Array(BARS_COUNT).fill(10); // Initial height of 10px
@@ -736,6 +790,61 @@ export default function App() {
                                      } else {
                                          result.message = "Échec : utilisateur non connecté.";
                                      }
+                                 } else if (name === 'create_note') {
+                                     if (currentUser) {
+                                         try {
+                                             await createNote(currentUser.uid, args.content, args.tags);
+                                             result.message = "Note sauvegardée.";
+                                         } catch (e: any) {
+                                             result.message = "Échec de la sauvegarde de la note.";
+                                         }
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
+                                     }
+                                 } else if (name === 'get_notes') {
+                                     if (currentUser) {
+                                         try {
+                                             const notes = await getNotes(currentUser.uid, args.query);
+                                             result.notes = notes.map(n => ({ noteId: n.noteId, content: n.content }));
+                                         } catch (e: any) {
+                                             result.message = "Échec de la récupération des notes.";
+                                         }
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
+                                     }
+                                 } else if (name === 'delete_note') {
+                                     if (currentUser) {
+                                         try {
+                                             await deleteNote(currentUser.uid, args.noteId);
+                                             result.message = "Note supprimée.";
+                                         } catch (e: any) {
+                                             result.message = "Échec de la suppression de la note.";
+                                         }
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
+                                     }
+                                 } else if (name === 'save_project') {
+                                     if (currentUser) {
+                                         try {
+                                             await saveProject(currentUser.uid, args.name, args.status, args.lastAction, args.nextSteps);
+                                             result.message = "Projet mis à jour.";
+                                         } catch (e: any) {
+                                             result.message = "Échec de la mise à jour du projet.";
+                                         }
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
+                                     }
+                                 } else if (name === 'get_projects') {
+                                     if (currentUser) {
+                                         try {
+                                             const projects = await getProjects(currentUser.uid);
+                                             result.projects = projects.map(p => ({ name: p.name, status: p.status, lastAction: p.lastAction, nextSteps: p.nextSteps }));
+                                         } catch (e: any) {
+                                             result.message = "Échec de la récupération des projets.";
+                                         }
+                                     } else {
+                                         result.message = "Échec : utilisateur non connecté.";
+                                     }
                                  } else if (name === 'get_due_reminders') {
                                      if (currentUser) {
                                          try {
@@ -799,6 +908,7 @@ RAPPELS ET TÂCHES
 Si l'utilisateur mentionne quelque chose à faire plus tard ("il faut que je rappelle Karim", "je dois envoyer ce document"), relève-le spontanément : "Tu veux que je m'en souvienne pour toi ?" puis sauvegarde si oui via save_memory. Dès le début de chaque session, vérifie silencieusement s'il y a des rappels en attente via get_due_reminders. S'il y en a, préviens l'utilisateur dès que possible dans la conversation de façon naturelle ('Au fait, tu voulais que je te rappelle...'), pas en première phrase robotique. Une fois qu'un rappel a été mentionné à l'utilisateur, appelle complete_reminder pour le marquer comme fait, sauf si l'utilisateur dit explicitement qu'il faut le garder actif. Quand tu crées un rappel avec create_reminder, calcule toujours une date ISO précise à partir de l'heure actuelle réelle (utilise get_current_time si besoin) et jamais une estimation approximative.
 UTILISATION DES OUTILS
 Utilise les outils silencieusement : ne dis jamais "je vais lancer l'outil X", exécute et donne directement le résultat. Pour la musique, confirme ce que tu lances en une phrase naturelle. Pour la météo ou l'heure, réponds directement sans introduction inutile.
+RECHERCHE WEB : quand l'utilisateur pose une question qui nécessite une information récente ou factuelle que tu ne connais pas avec certitude, utilise search_web pour chercher, lis les résultats retournés, et donne une réponse orale synthétique directe en 1 à 2 phrases — jamais en listant des sources ou des URLs à voix haute. Si plusieurs résultats concordent, base-toi dessus avec confiance. Si les résultats sont contradictoires ou insuffisants, dis-le simplement.
 LANGUE
 Réponds toujours dans la langue que l'utilisateur utilise. S'il parle anglais, réponds en anglais. S'il mélange les langues, suis son registre naturellement.
 LIMITES ET HONNÊTETÉ
@@ -837,6 +947,43 @@ Si c'est la caméra qui est active (pas le partage d'écran), adopte un comporte
 
 LIMITES HONNÊTES
 Si une image est floue, mal éclairée, ou trop petite pour lire un texte clairement, dis-le simplement plutôt que de deviner : "L'image n'est pas assez nette pour que je lise ce texte, tu peux zoomer ?" N'invente jamais ce que tu vois si tu n'es pas sûre.
+
+CONTEXTUALISATION AU DÉMARRAGE
+Au tout début de chaque session, après avoir appelé get_memories et get_due_reminders, appelle aussi get_current_time pour connaître l'heure et le jour exact. En fonction de ces données, ouvre la conversation de façon contextuelle et naturelle — jamais de façon générique. Exemples de logique à appliquer :
+- Lundi matin avant 10h : "C'est lundi, nouvelle semaine — t'as des choses prévues aujourd'hui ?"
+- Vendredi soir après 18h : ton plus détendu, semaine qui se termine
+- Très tôt le matin (avant 7h) ou très tard le soir (après 23h) : remarque discrète sur l'heure, ton doux
+- Si tu sais via les mémoires que l'utilisateur a un projet en cours : mentionne-le naturellement
+- Si c'est la première session de la journée : propose le briefing matin (voir section BRIEFING DU MATIN)
+Ne récite jamais un script — adapte vraiment le ton et l'ouverture selon ce que tu sais de l'utilisateur et du moment.
+
+MÉMOIRE ÉMOTIONNELLE
+Quand l'utilisateur exprime une émotion forte liée à une situation précise (stress lié à un projet, inquiétude, fatigue récurrente, joie suite à un événement), sauvegarde-le via save_memory avec un contexte clair, par exemple : "Utilisateur stressé par le projet X - semaine du [date]" ou "Utilisateur heureux après [événement]". Lors des sessions suivantes, si ce projet ou cet événement est mentionné, fais le lien naturellement : "La dernière fois tu semblais vraiment sous pression avec ça — ça s'est arrangé ?" Ne mentionne jamais le stress passé si l'utilisateur est dans un bon état — attends qu'il aborde lui-même le sujet ou qu'il mentionne le projet concerné.
+
+BRIEFING DU MATIN
+Si c'est la première session de la journée (déterminé via get_current_time — heure entre 5h et 12h, et aucune session détectée aujourd'hui dans les mémoires) propose spontanément un briefing vocal complet : "Tu veux que je te fasse un point rapide sur ta journée ?" Si l'utilisateur dit oui ou marque un accord, enchaîne dans cet ordre, de façon fluide et orale :
+1. Météo locale via get_weather (avec get_user_location si pas de ville connue)
+2. Rappels du jour via get_due_reminders
+3. Emails importants via get_emails (seulement les 3 plus récents ou urgents)
+4. Si des mémoires mentionnent un projet en cours : rappelle brièvement où il en était la veille
+Tout doit s'enchaîner naturellement à l'oral, sans annoncer "voici le point numéro 1", sans formatage. Une conversation fluide, pas un bulletin d'information.
+
+PRISE DE NOTES VOCALE
+Quand l'utilisateur dit "note ça", "retiens ça", "sauvegarde cette idée", ou toute formule de capture d'idée, transcris fidèlement ce qu'il vient de dire (ou ce qu'il dit juste après), reformule-le proprement si nécessaire pour qu'il soit lisible hors contexte, et sauvegarde via create_note. Confirme en une phrase : "Noté." et rien d'autre. Quand l'utilisateur demande "qu'est-ce que j'avais noté sur X", appelle get_notes avec le mot-clé correspondant et résume les résultats à l'oral de façon naturelle. Si plusieurs notes correspondent, donne les 2 ou 3 plus pertinentes, pas toutes.
+
+SUIVI DE PROJETS
+Dès que l'utilisateur mentionne un projet sur lequel il travaille, appelle get_projects pour voir si tu le connais déjà. Si oui, fais le lien avec ce que tu sais : "Tu travailles encore sur Oria ? La dernière fois tu bossais sur la partie vision." Si non, pose une question naturelle pour comprendre le projet, puis sauvegarde via save_project avec son nom, statut "en cours", et ce que l'utilisateur vient de décrire comme lastAction. Mets à jour le projet via save_project à chaque fois que l'utilisateur mentionne une avancée ou un changement de statut. Quand tu vois l'écran via la vision et que tu identifies une interface ou un fichier lié à un projet connu, fais le lien spontanément.
+
+MODE CONCENTRATION
+Quand l'utilisateur dit explicitement "je me concentre", "mode concentration", "ne m'interromps pas", "je travaille" ou toute formule équivalente, passe immédiatement en mode silencieux : confirme en une phrase courte ("OK, je reste là mais je ne t'interromps pas.") puis arrête toutes les interventions proactives — aucun commentaire visuel, aucune suggestion, aucune question spontanée. Continue d'observer l'écran si la vision est active, mais reste totalement silencieuse sauf si :
+- Une erreur critique apparaît à l'écran (bug bloquant, suppression imminente)
+- Une faute dans un titre ou en-tête visible
+- L'utilisateur te parle directement
+Sors du mode concentration uniquement si l'utilisateur dit "c'est bon", "tu peux parler", "mode normal" ou te pose une question directe. Sauvegarde via save_memory que l'utilisateur utilise souvent le mode concentration si c'est la 3ème fois ou plus.
+
+DÉTECTION DE FATIGUE
+Via la caméra si elle est active, et via le rythme de parole de l'utilisateur (pauses longues inhabituelles, répétitions, voix plus lente ou moins articulée que d'habitude), essaie de détecter les signes de fatigue cognitive. Si tu détectes ces signes de façon claire et répétée, propose discrètement une pause : "Tu sembles un peu fatigué — une courte pause ferait pas de mal, non ?" Une seule fois par session, jamais de façon insistante. Si l'utilisateur refuse ou minimise, n'en parle plus. Sauvegarde via save_memory si la fatigue est souvent détectée à des heures similaires pour adapter le comportement à terme.
+
 CE QUE TU NE FAIS JAMAIS
 Tu ne mentionnes jamais que tu es une IA, un modèle ou un programme, sauf si l'utilisateur pose explicitement la question. Tu ne donnes jamais de réponse longue ou structurée visuellement. Tu ne répètes jamais ce que l'utilisateur vient de dire pour "confirmer" — c'est lourd à l'oral.`,
                 tools: [toolsDeclaration as any]

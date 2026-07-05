@@ -10,19 +10,15 @@ service cloud.firestore {
     function isSignedIn() {
       return request.auth != null;
     }
-
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
-
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
-
     function incoming() {
       return request.resource.data;
     }
-
     function existing() {
       return resource.data;
     }
@@ -69,7 +65,6 @@ service cloud.firestore {
     }
 
     // --- Collection Rules ---
-
     match /users/{userId} {
       // Basic profile access
       allow get: if isOwner(userId) && isValidId(userId);
@@ -86,6 +81,17 @@ service cloud.firestore {
                       incoming().createdAt == existing().createdAt &&
                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'interests', 'updatedAt']);
 
+      match /notes/{noteId} {
+        allow read, create: if isOwner(userId);
+        allow delete: if isOwner(userId);
+        allow update: if false;
+      }
+
+      match /projects/{projectId} {
+        allow read, create, update: if isOwner(userId);
+        allow delete: if false;
+      }
+
       match /memories/{memoryId} {
         // Only the owner can list or get their memories
         allow list, get: if isOwner(userId) && isValidId(userId);
@@ -100,15 +106,17 @@ service cloud.firestore {
 
       match /conversations/{sessionId}/messages/{messageId} {
         allow list, get: if isOwner(userId) && isValidId(userId);
-        allow create: if isOwner(userId) && isValidId(userId) &&
+
+        allow create: if isOwner(userId) && isValidId(userId) && 
                         isValidConversationMessage(incoming());
+
         allow update, delete: if false;
       }
 
       match /daily_summaries/{date} {
         allow get: if isOwner(userId);
-        allow create, update: if isOwner(userId) &&
-                                isValidDailySummary(incoming());
+        allow create, update: if isOwner(userId) && 
+                              isValidDailySummary(incoming());
       }
     }
   }
