@@ -371,8 +371,15 @@ export default function App() {
         stopVideoCapture();
       };
       
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error starting video capture:", err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setTranscript("Accès refusé. Autorise l'accès à la caméra dans les paramètres de ton navigateur, puis réessaie.");
+      } else if (err.message && err.message.includes("disallowed by permissions policy")) {
+        setTranscript("La caméra et le partage d'écran ne sont pas disponibles dans cet aperçu. Teste cette fonctionnalité sur l'application déployée.");
+      } else {
+        setTranscript(`Impossible d'accéder à la vidéo : ${err.message}`);
+      }
       stopVideoCapture();
     }
   }, [stopVideoCapture]);
